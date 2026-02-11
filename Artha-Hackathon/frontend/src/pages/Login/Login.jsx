@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Phone, Lock, ArrowRight } from 'lucide-react';
+import { Phone, Lock, ArrowRight, LogOut } from 'lucide-react';
 import logo from '../../assets/artha-logo.jpg';
 import '../../styles/Auth.css'; // Shared Auth styles
 
@@ -10,8 +10,15 @@ const Login = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { login } = useAuth();
+    const { user, login, logout } = useAuth();
     const navigate = useNavigate();
+
+    const handleLogout = () => {
+        logout();
+        setError('');
+        setPhone('');
+        setPassword('');
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -26,6 +33,35 @@ const Login = () => {
             setLoading(false);
         }
     };
+
+    // If user is already logged in, show a message
+    if (user) {
+        return (
+            <div className="auth-page">
+                <div className="auth-card card">
+                    <div className="auth-header text-center">
+                        <img src={logo} alt="Artha" className="auth-logo mb-4" />
+                        <h2>Already Logged In</h2>
+                        <p>You are currently logged in as <strong>{user.name}</strong></p>
+                    </div>
+
+                    <div className="alert-info mb-4" style={{ textAlign: 'center' }}>
+                        <p>Want to log in as a different user?</p>
+                        <button onClick={handleLogout} className="btn btn-outline mt-3">
+                            <LogOut size={18} className="mr-2" />
+                            Logout and Login as Different User
+                        </button>
+                    </div>
+
+                    <div className="auth-footer text-center mt-4">
+                        <Link to="/" className="btn btn-primary">
+                            Go to Home
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="auth-page">
