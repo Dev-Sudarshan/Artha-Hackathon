@@ -102,6 +102,21 @@
     border: 1px solid rgba(214, 69, 69, 0.2);
 }
 
+.alert-info {
+    background-color: rgba(15, 76, 92, 0.08);
+    color: var(--color-primary-dark);
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+    border: 1px solid rgba(15, 76, 92, 0.2);
+}
+
+.alert-info p {
+    margin-bottom: 0;
+    color: var(--color-text-main);
+}
+
 .text-primary {
     color: var(--color-primary);
 }

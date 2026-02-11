@@ -58,6 +58,13 @@ const KYC = () => {
     return 'neutral';
   };
 
+  const getAiVerificationStatus = (record) => {
+    const aiStatus = record.ai_suggested_status?.toUpperCase();
+    if (aiStatus === 'APPROVED') return { text: 'AI Verified', class: 'verified' };
+    if (aiStatus === 'REJECTED') return { text: 'AI Not Verified', class: 'not-verified' };
+    return { text: 'AI Processing', class: 'processing' };
+  };
+
   const handleApprove = async () => {
     if (!selectedPhone) return;
     setActionLoading(true);
@@ -91,6 +98,20 @@ const KYC = () => {
     }
   };
 
+  const renderVerificationItem = (label, value, isMatch = null) => {
+    return (
+      <div className="verification-item">
+        <span className="verification-label">{label}:</span>
+        <span className="verification-value">{value || '—'}</span>
+        {isMatch !== null && (
+          <span className={`verification-badge ${isMatch ? 'match' : 'no-match'}`}>
+            {isMatch ? '✓ Match' : '✗ No Match'}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   if (loading) return <div className="loading">Loading KYC records...</div>;
 
   return (
@@ -100,84 +121,178 @@ const KYC = () => {
         <div className="kyc-subtitle">Total records: <b>{kycRecords.length}</b></div>
       </div>
 
-      <div className="kyc-grid">
+      <div className={`kyc-grid ${selectedDetails ? 'with-details' : 'list-only'}`}>
         <section className="kyc-panel">
           <div className="kyc-panel-title">Applicants</div>
           <div className="kyc-list">
             {kycRecords.map((r) => {
               const active = selectedPhone === r.user_phone;
-              const tone = statusTone(r.status);
+              const aiStatus = getAiVerificationStatus(r);
               return (
                 <button
                   key={r.user_phone}
                   onClick={() => loadDetails(r.user_phone)}
-                  className={`kyc-item ${active ? 'active' : ''}`}
+                  className={`kyc-item-compact ${active ? 'active' : ''}`}
                 >
-                  <div className="kyc-item-top">
-                    <div className="kyc-name">{r.full_name || r.user_phone}</div>
-                    <span className={`kyc-badge ${tone}`}>{r.status || '—'}</span>
-                  </div>
-                  <div className="kyc-meta">{r.user_phone}</div>
-                  <div className="kyc-meta">
-                    {r.ai_suggested_status ? <span>AI: <b>{r.ai_suggested_status}</b></span> : <span />}
-                    <span className="kyc-dot" />
-                    <span>{r.age ? `Age: ${r.age}` : 'Age: —'}</span>
-                  </div>
-                  <div className="kyc-meta">{r.location || 'Location: —'}</div>
+                  <div className="kyc-item-name">{r.full_name || r.user_phone}</div>
+                  <span className={`ai-verification-badge ${aiStatus.class}`}>{aiStatus.text}</span>
                 </button>
               );
             })}
           </div>
         </section>
 
-        <section className="kyc-panel">
-          <div className="kyc-panel-title">Review</div>
-          {!selectedDetails ? (
-            <div className="kyc-empty">Select a record to review.</div>
-          ) : (
-            <div className="kyc-details">
-              <div className="kyc-details-grid">
-                <div className="kyc-detail"><b>User:</b> {selectedDetails.full_name} ({selectedDetails.user_phone})</div>
-                <div className="kyc-detail">
-                  <b>Status:</b>{' '}
-                  <span className={`kyc-badge ${statusTone(selectedDetails.status)}`}>{selectedDetails.status}</span>
+        {selectedDetails && (
+          <section className="kyc-panel kyc-details-panel">
+            <div className="kyc-details-new">
+              {/* Header Section */}
+              <div className="detail-header">
+                <div>
+                  <h2>{selectedDetails.full_name}</h2>
+                  <p className="detail-phone">{selectedDetails.user_phone}</p>
                 </div>
-                {selectedDetails.age ? <div className="kyc-detail"><b>Age:</b> {selectedDetails.age}</div> : null}
-                {selectedDetails.location ? <div className="kyc-detail"><b>Location:</b> {selectedDetails.location}</div> : null}
+                <span className={`kyc-badge ${statusTone(selectedDetails.status)}`}>
+                  {selectedDetails.status}
+                </span>
               </div>
 
               {actionError ? <div className="kyc-error">{actionError}</div> : null}
 
-              {!canReview ? (
-                <div className="kyc-hint">Approve/Reject is enabled only when status is pending.</div>
-              ) : null}
-
-              <div className="kyc-images">
-                <div className="kyc-image-card">
-                  <div className="kyc-image-title">ID Front</div>
-                  {selectedDetails.doc_front_url ? (
-                    <img alt="ID Front" src={normalizeUrl(selectedDetails.doc_front_url)} />
-                  ) : (
-                    <div className="kyc-image-empty">No file</div>
-                  )}
-                </div>
-                <div className="kyc-image-card">
-                  <div className="kyc-image-title">ID Back</div>
-                  {selectedDetails.doc_back_url ? (
-                    <img alt="ID Back" src={normalizeUrl(selectedDetails.doc_back_url)} />
-                  ) : (
-                    <div className="kyc-image-empty">No file</div>
-                  )}
-                </div>
-                <div className="kyc-image-card wide">
-                  <div className="kyc-image-title">Live Selfie</div>
-                  {selectedDetails.selfie_url ? (
-                    <img alt="Selfie" src={normalizeUrl(selectedDetails.selfie_url)} />
-                  ) : (
-                    <div className="kyc-image-empty">No file</div>
+              {/* User Entered Data Section */}
+              <div className="detail-section">
+                <h3 className="section-title">User Entered Data (KYC Form)</h3>
+                <div className="verification-grid">
+                  {selectedDetails.kyc?.basic_info && (
+                    <>
+                      <div className="verification-item">
+                        <span className="verification-label">First Name:</span>
+                        <span className="verification-value">{selectedDetails.kyc.basic_info.first_name || '—'}</span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Middle Name:</span>
+                        <span className="verification-value">{selectedDetails.kyc.basic_info.middle_name || '—'}</span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Last Name:</span>
+                        <span className="verification-value">{selectedDetails.kyc.basic_info.last_name || '—'}</span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Date of Birth:</span>
+                        <span className="verification-value">{selectedDetails.kyc.basic_info.date_of_birth || '—'}</span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Citizenship No:</span>
+                        <span className="verification-value">{selectedDetails.kyc.id_documents?.id_details?.id_number || '—'}</span>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
+
+              {/* OCR Extracted Data Section */}
+              <div className="detail-section">
+                <h3 className="section-title">OCR Extracted Data (from Citizenship Card)</h3>
+                <div className="verification-grid">
+                  {selectedDetails.kyc?.id_documents?.ocr_extracted ? (
+                    <>
+                      {renderVerificationItem('Citizenship Certificate No', selectedDetails.kyc.id_documents.ocr_extracted.citizenship_certificate_number, selectedDetails.kyc.final_result?.citizenship_no_match)}
+                      {renderVerificationItem('Full Name', selectedDetails.kyc.id_documents.ocr_extracted.full_name, selectedDetails.kyc.final_result?.name_match)}
+                      {renderVerificationItem('Sex', selectedDetails.kyc.id_documents.ocr_extracted.sex)}
+                      {renderVerificationItem('Date of Birth', selectedDetails.kyc.id_documents.ocr_extracted.date_of_birth, selectedDetails.kyc.final_result?.dob_match)}
+                      {selectedDetails.kyc.id_documents.ocr_extracted.birth_place && (
+                        <div className="verification-item full-width">
+                          <span className="verification-label">Birth Place:</span>
+                          <span className="verification-value">
+                            {selectedDetails.kyc.id_documents.ocr_extracted.birth_place.district}, {selectedDetails.kyc.id_documents.ocr_extracted.birth_place.municipality}, Ward {selectedDetails.kyc.id_documents.ocr_extracted.birth_place.ward}
+                          </span>
+                        </div>
+                      )}
+                      {selectedDetails.kyc.id_documents.ocr_extracted.permanent_address && (
+                        <div className="verification-item full-width">
+                          <span className="verification-label">Permanent Address:</span>
+                          <span className="verification-value">
+                            {selectedDetails.kyc.id_documents.ocr_extracted.permanent_address.district}, {selectedDetails.kyc.id_documents.ocr_extracted.permanent_address.municipality}, Ward {selectedDetails.kyc.id_documents.ocr_extracted.permanent_address.ward}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="verification-item full-width">
+                      <span className="verification-value">No OCR data available</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Verification Results */}
+              <div className="detail-section">
+                <h3 className="section-title">AI Verification Results</h3>
+                <div className="verification-grid">
+                  {selectedDetails.kyc?.final_result && (
+                    <>
+                      <div className="verification-item">
+                        <span className="verification-label">Gov ID Verified:</span>
+                        <span className={`verification-badge ${selectedDetails.kyc.final_result.gov_id_verified ? 'match' : 'no-match'}`}>
+                          {selectedDetails.kyc.final_result.gov_id_verified ? '✓ Verified' : '✗ Failed'}
+                        </span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Face Match:</span>
+                        <span className={`verification-badge ${selectedDetails.kyc.final_result.face_match_score < 0.6 ? 'match' : 'no-match'}`}>
+                          {selectedDetails.kyc.final_result.face_match_score < 0.6 ? `✓ Match (${(1 - selectedDetails.kyc.final_result.face_match_score).toFixed(2)})` : '✗ No Match'}
+                        </span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">AI Suggestion:</span>
+                        <span className={`kyc-badge ${selectedDetails.kyc.final_result.ai_suggested_status === 'APPROVED' ? 'approved' : 'rejected'}`}>
+                          {selectedDetails.kyc.final_result.ai_suggested_status}
+                        </span>
+                      </div>
+                      {selectedDetails.kyc.final_result.reason && (
+                        <div className="verification-item full-width">
+                          <span className="verification-label">Reason:</span>
+                          <span className="verification-value">{selectedDetails.kyc.final_result.reason}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Document Images */}
+              <div className="detail-section">
+                <h3 className="section-title">Uploaded Documents</h3>
+                <div className="kyc-images">
+                  <div className="kyc-image-card">
+                    <div className="kyc-image-title">Citizenship Front</div>
+                    {selectedDetails.doc_front_url ? (
+                      <img alt="ID Front" src={normalizeUrl(selectedDetails.doc_front_url)} />
+                    ) : (
+                      <div className="kyc-image-empty">No file</div>
+                    )}
+                  </div>
+                  <div className="kyc-image-card">
+                    <div className="kyc-image-title">Citizenship Back</div>
+                    {selectedDetails.doc_back_url ? (
+                      <img alt="ID Back" src={normalizeUrl(selectedDetails.doc_back_url)} />
+                    ) : (
+                      <div className="kyc-image-empty">No file</div>
+                    )}
+                  </div>
+                  <div className="kyc-image-card">
+                    <div className="kyc-image-title">Live Photo</div>
+                    {selectedDetails.selfie_url ? (
+                      <img alt="Selfie" src={normalizeUrl(selectedDetails.selfie_url)} />
+                    ) : (
+                      <div className="kyc-image-empty">No file</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {!canReview ? (
+                <div className="kyc-hint">Approve/Reject is enabled only when status is pending.</div>
+              ) : null}
 
               <div className="kyc-actions">
                 <button className="btn btn-primary" disabled={!canReview || actionLoading} onClick={handleApprove}>
@@ -188,8 +303,8 @@ const KYC = () => {
                 </button>
               </div>
             </div>
-          )}
-        </section>
+          </section>
+        )}
       </div>
     </div>
   );

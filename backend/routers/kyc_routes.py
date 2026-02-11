@@ -38,7 +38,7 @@ def kyc_id_documents(
     try:
         payload.user_id = current_user
         submit_id_documents(payload)
-        return {"message": "ID documents received, analysis started"}
+        return {"message": "ID documents saved. Complete final step to verify."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -51,6 +51,6 @@ def kyc_declaration_video(
     try:
         payload.user_id = current_user
         submit_declaration_video(payload)
-        return {"message": "Video received, KYC processing"}
+        return {"message": "KYC complete. Running verification checks (OCR, face match, liveness)..."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
