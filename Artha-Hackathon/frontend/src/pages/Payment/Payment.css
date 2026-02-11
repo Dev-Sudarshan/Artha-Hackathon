@@ -1,0 +1,220 @@
+.payment-gateway-wrapper {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 2.5rem;
+    align-items: start;
+}
+
+.payment-sidebar {
+    position: sticky;
+    top: 100px;
+    padding: 2.5rem !important;
+    background: white;
+}
+
+.payment-main {
+    padding: 3rem !important;
+    min-height: 600px;
+}
+
+.order-summary h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-primary);
+}
+
+.total-row {
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--color-bg-subtle);
+}
+
+.total-row span:first-child {
+    font-weight: 600;
+    color: var(--color-text-main);
+}
+
+.total-amount {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--color-primary);
+}
+
+/* Gateway Header & Steps */
+.gateway-header h2 {
+    font-size: 1.75rem;
+    font-weight: 800;
+    margin-bottom: 1.5rem;
+}
+
+.step-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.step-indicator span {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    letter-spacing: 0.5px;
+}
+
+.step-indicator span.active {
+    color: var(--color-primary);
+}
+
+.step-indicator .line {
+    width: 20px;
+    height: 2px;
+    background: var(--color-border);
+}
+
+/* Method Selection */
+.method-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+}
+
+.method-card {
+    padding: 1.5rem;
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.method-card:hover:not(.disabled) {
+    border-color: var(--color-primary-light);
+    background: var(--color-bg-subtle);
+}
+
+.method-card.active {
+    border-color: var(--color-primary);
+    background: #F0F7FF;
+    box-shadow: 0 4px 12px rgba(0, 82, 204, 0.1);
+}
+
+.method-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #F9FAFB;
+}
+
+.method-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.25rem;
+    color: white;
+}
+
+.method-logo.khalti {
+    background: #5D2E8E;
+}
+
+.method-logo.esewa {
+    background: #60BB46;
+}
+
+.method-logo.bank {
+    background: var(--color-primary);
+}
+
+/* Form Styles */
+.form-group label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    color: var(--color-text-main);
+}
+
+.input-with-icon {
+    position: relative;
+}
+
+.input-with-icon .icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-muted);
+}
+
+.input-with-icon input {
+    width: 100%;
+    padding: 1rem 1rem 1rem 3rem;
+    border-radius: var(--radius-lg);
+    border: 2px solid var(--color-border);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.input-with-icon input:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(0, 82, 204, 0.1);
+}
+
+.otp-input {
+    width: 100%;
+    max-width: 300px;
+    padding: 1.25rem;
+    border-radius: var(--radius-xl);
+    border: 2px solid var(--color-primary-light);
+    background: #F8FAFC;
+}
+
+.back-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    border: 1px solid var(--color-border);
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.back-btn:hover {
+    background: var(--color-bg-subtle);
+    border-color: var(--color-primary-light);
+}
+
+@keyframes scaleUp {
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.animate-scale-up {
+    animation: scaleUp 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@media (max-width: 1024px) {
+    .payment-gateway-wrapper {
+        grid-template-columns: 1fr;
+    }
+
+    .payment-sidebar {
+        position: static;
+        order: 2;
+    }
+}
