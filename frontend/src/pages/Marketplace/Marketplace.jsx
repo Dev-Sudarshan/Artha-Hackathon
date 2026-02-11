@@ -45,8 +45,10 @@ const Marketplace = () => {
         };
         fetchLoans();
 
-        // Poll every 10 seconds for updates
-        const interval = setInterval(fetchLoans, 10000);
+        // Poll every 60 seconds (not 10) — only when tab is visible
+        const interval = setInterval(() => {
+            if (!document.hidden) fetchLoans();
+        }, 60000);
         return () => clearInterval(interval);
     }, []);
 

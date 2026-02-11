@@ -22,36 +22,50 @@ const Profile = () => {
         <div className="container mt-12 mb-20 animate-fade">
             <div className="max-w-5xl mx-auto">
                 {/* Premium Profile Header */}
-                <div className="profile-header card overflow-hidden p-0 border-0 shadow-premium mb-12" style={{ borderRadius: 'var(--radius-xl)' }}>
-                    <div className="h-48 bg-gradient-to-r from-primary to-primary-dark relative">
+                <div className="profile-header card overflow-hidden p-0 border-0 shadow-lg mb-8" style={{ borderRadius: '24px' }}>
+                    <div className="h-32 bg-gradient-to-r from-primary to-primary-dark relative">
                         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
                     </div>
-                    <div className="px-12 pb-12 relative">
-                        <div className="flex justify-between items-end -translate-y-12">
-                            <div className="flex items-end gap-8">
-                                <div className="w-40 h-40 rounded-3xl border-8 border-white shadow-xl overflow-hidden bg-white">
+                    <div className="px-8 pb-8 relative">
+                        <div className="flex justify-between items-end -translate-y-10">
+                            <div className="flex items-end gap-6">
+                                <div className="w-24 h-24 rounded-2xl border-4 border-white shadow-lg overflow-hidden bg-white">
                                     <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
                                 </div>
-                                <div className="pb-4">
-                                    <h1 className="text-4xl font-black text-slate-900 mb-2">{user.name}</h1>
-                                    <div className="flex items-center gap-3">
-                                        <div className={`badge ${user.kycStatus === 'verified' ? 'badge-success' : 'badge-warning'} flex items-center gap-2 py-2 px-4 shadow-sm`}>
-                                            {user.kycStatus === 'verified' ? <BadgeCheck size={16} /> : <AlertCircle size={16} />}
-                                            {user.kycStatus === 'verified' ? 'Verified Member' : `KYC ${user.kycStatus}`}
+                                <div className="pb-2">
+                                    <h1 className="text-2xl font-black text-slate-900 mb-1">{user.name}</h1>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`badge ${user.kycStatus === 'verified' ? 'badge-success' : user.kycStatus === 'rejected' ? 'badge-error' : 'badge-warning'} flex items-center gap-1 py-1 px-3 text-xs`}>
+                                            {user.kycStatus === 'verified' ? <BadgeCheck size={14} /> : <AlertCircle size={14} />}
+                                            {user.kycStatus === 'verified'
+                                                ? 'Verified'
+                                                : user.kycStatus === 'pending_admin_review' || user.kycStatus === 'processing'
+                                                    ? 'Pending'
+                                                    : user.kycStatus === 'rejected'
+                                                        ? 'Rejected'
+                                                        : 'Incomplete'}
                                         </div>
-                                        <span className="text-sm font-bold text-slate-400">ID: ART-2025-{user.id || '99'}</span>
+                                        <span className="text-xs font-medium text-slate-400">ID: ART-2025-{user.phone?.slice(-4) || '9811'}</span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="pb-4 flex gap-4">
-                                {user.kycStatus !== 'verified' ? (
-                                    <Link to="/kyc" className="btn btn-primary px-8 py-4 shadow-lg shadow-blue-500/30">
-                                        <BadgeCheck size={18} /> Verify Identity
+                            <div className="pb-2 flex gap-3">
+                                {user.kycStatus === 'verified' ? (
+                                    <button className="btn btn-outline px-6 py-2 text-sm shadow-sm hover:border-primary transition-all">
+                                        <User size={16} /> Edit Profile
+                                    </button>
+                                ) : user.kycStatus === 'pending_admin_review' || user.kycStatus === 'processing' ? (
+                                    <button className="btn btn-outline px-6 py-2 text-sm shadow-sm cursor-default" disabled>
+                                        <AlertCircle size={16} /> KYC Pending
+                                    </button>
+                                ) : user.kycStatus === 'rejected' ? (
+                                    <Link to="/kyc" className="btn btn-primary px-6 py-2 text-sm shadow-lg shadow-red-500/30">
+                                        <AlertCircle size={16} /> Retry KYC
                                     </Link>
                                 ) : (
-                                    <button className="btn btn-outline px-8 py-4 shadow-sm hover:border-primary transition-all">
-                                        <User size={18} /> Edit Profile
-                                    </button>
+                                    <Link to="/kyc" className="btn btn-primary px-6 py-2 text-sm shadow-lg shadow-blue-500/30">
+                                        <BadgeCheck size={16} /> Verify Identity
+                                    </Link>
                                 )}
                             </div>
                         </div>
@@ -66,74 +80,67 @@ const Profile = () => {
                                 <div className="p-3 rounded-xl bg-slate-50 text-primary"><User size={24} /></div>
                                 Personal Information
                             </h3>
-                            <div className="grid grid-2 gap-x-12 gap-y-10">
-                                <div className="group transition-all">
-                                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Phone Primary</p>
-                                    <div className="flex items-center gap-3">
-                                        <Phone size={18} className="text-slate-300 group-hover:text-primary transition-colors" />
-                                        <p className="text-lg font-bold text-slate-700">{user.phone}</p>
+                            <div className="space-y-8">
+                                <div className="flex items-center gap-6 p-6 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-all">
+                                    <div className="p-4 rounded-xl bg-white shadow-sm">
+                                        <Phone size={24} className="text-primary" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold uppercase text-slate-400 tracking-wide mb-1">Phone Number</p>
+                                        <p className="text-xl font-bold text-slate-800">{user.phone}</p>
                                     </div>
                                 </div>
-                                <div className="group transition-all">
-                                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Official Email</p>
-                                    <div className="flex items-center gap-3">
-                                        <Mail size={18} className="text-slate-300 group-hover:text-primary transition-colors" />
-                                        <p className="text-lg font-bold text-slate-700">{user.email || 'not_linked@artha.com'}</p>
+                                
+                                <div className="flex items-center gap-6 p-6 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-all">
+                                    <div className="p-4 rounded-xl bg-white shadow-sm">
+                                        <Mail size={24} className="text-primary" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold uppercase text-slate-400 tracking-wide mb-1">Email Address</p>
+                                        <p className="text-xl font-bold text-slate-800">{user.email || 'not_linked@artha.com'}</p>
                                     </div>
                                 </div>
-                                <div className="group transition-all">
-                                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Home Address</p>
-                                    <div className="flex items-center gap-3">
-                                        <MapPin size={18} className="text-slate-300 group-hover:text-primary transition-colors" />
-                                        <p className="text-lg font-bold text-slate-700">Kathmandu, Nepal</p>
+                                
+                                <div className="flex items-center gap-6 p-6 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-all">
+                                    <div className="p-4 rounded-xl bg-white shadow-sm">
+                                        <MapPin size={24} className="text-primary" />
                                     </div>
-                                </div>
-                                <div className="group transition-all">
-                                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Nepal Citizenship ID</p>
-                                    <div className="flex items-center gap-3">
-                                        <BadgeCheck size={18} className="text-slate-300 group-hover:text-primary transition-colors" />
-                                        <p className="text-lg font-bold text-slate-700">{user.citizenshipNo || 'Verified Online'}</p>
+                                    <div>
+                                        <p className="text-xs font-bold uppercase text-slate-400 tracking-wide mb-1">Location</p>
+                                        <p className="text-xl font-bold text-slate-800">Kathmandu, Nepal</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
-
-                        {/* Recent Activity Mini-Card */}
-
                     </div>
 
                     {/* Sidebar Stats */}
                     <div className="space-y-8">
-                        <div className="card p-10 bg-slate-900 text-white shadow-premium border-0 overflow-hidden relative">
-                            <div className="relative z-10">
-                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-6">Financial Level</p>
-                                <div className="flex items-end gap-2 mb-8">
-                                    <h2 className="text-5xl font-black text-white">Tier {user.kycStatus === 'verified' ? 'II' : 'I'}</h2>
+                        <div className="card p-10 bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-premium border-0">
+                            <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-6">Financial Level</p>
+                            <h2 className="text-6xl font-black text-white mb-8">
+                                Tier {
+                                    (user.borrowingLimit || 50000) >= 100000 ? 'III' :
+                                    (user.borrowingLimit || 50000) >= 50000 ? 'II' : 'I'
+                                }
+                            </h2>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-slate-400 font-bold">Borrowing Limit</span>
+                                    <span className="text-2xl font-black text-white">Rs. {(user.borrowingLimit || 50000).toLocaleString()}</span>
                                 </div>
-                                <div className="space-y-4">
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500 font-bold uppercase">Borrowing Limit</span>
-                                        <span className="font-black">Rs. {(user.bankDetailsAdded ? 100000 : 50000).toLocaleString()}</span>
-                                    </div>
-                                    <div className="h-1 bg-slate-800 rounded-full">
-                                        <div className="h-full bg-primary w-2/3"></div>
-                                    </div>
+                                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-gradient-to-r from-primary to-blue-400 shadow-lg shadow-primary/30 transition-all duration-500"
+                                        style={{ width: `${Math.min(((user.borrowingLimit || 50000) / 100000) * 100, 100)}%` }}
+                                    ></div>
                                 </div>
-                            </div>
-                            <div className="absolute -bottom-8 -right-8 opacity-10">
-                                <BadgeCheck size={160} />
                             </div>
                         </div>
 
-                        <div className="card p-8 border-slate-100 text-center">
-                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Member Longevity</h4>
-                            <p className="text-3xl font-black text-slate-800">12 Days</p>
-                            <p className="text-xs font-medium text-muted mt-2">Joined: Dec 2025</p>
-                        </div>
-
-                        <div className="text-center px-4">
-                            <p className="text-xs font-bold text-slate-400 italic leading-relaxed">
-                                "Artha helps millions of Nepalese people find financial freedom through community support."
+                        <div className="text-center px-6 py-8">
+                            <p className="text-sm font-medium text-slate-500 italic leading-relaxed">
+                                "Building financial freedom through community-powered lending."
                             </p>
                         </div>
                     </div>

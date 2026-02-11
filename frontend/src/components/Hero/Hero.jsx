@@ -30,13 +30,17 @@ const Hero = () => {
                             </>
                         ) : (
                             <>
-                                {user.kycStatus !== 'verified' ? (
-                                    <Link to="/kyc" className="btn btn-primary">
-                                        Verify to Invest <ArrowRight size={20} />
-                                    </Link>
-                                ) : (
+                                {user.kycStatus === 'verified' ? (
                                     <Link to="/marketplace" className="btn btn-primary">
                                         Explore Loans <ArrowRight size={20} />
+                                    </Link>
+                                ) : user.kycStatus === 'pending_admin_review' || user.kycStatus === 'processing' ? (
+                                    <Link to="/profile" className="btn btn-outline">
+                                        KYC Pending Review
+                                    </Link>
+                                ) : (
+                                    <Link to="/kyc" className="btn btn-primary">
+                                        Verify to Invest <ArrowRight size={20} />
                                     </Link>
                                 )}
                                 <Link to="/portfolio" className="btn btn-outline">My Dashboard</Link>

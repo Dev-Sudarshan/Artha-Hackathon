@@ -2,84 +2,21 @@
 VIDEO VERIFICATION MODEL (FINAL)
 --------------------------------
 Verifies:
-1. Borrower speaks the EXACT Nepali declaration
-2. Borrower face in video matches citizenship ID face
+- Person face in video matches their live photo
 
 NO LIVENESS (hackathon scope)
 
 Pipeline:
 - Video → frames
-- Video → audio
-- Audio → text (Whisper)
-- STRICT declaration match (normalized + similarity threshold)
-- Face match (ArcFace via DeepFace)
+- Face match (ArcFace via DeepFace with RetinaFace detector)
 """
 
 import cv2
 import os
 import tempfile
-import re
 from typing import List
-from difflib import SequenceMatcher
 
-# ---- AI MODELS (MOVED TO FUNCTIONS) ----
-import imageio_ffmpeg
-import shutil
-
-# Setup ffmpeg for Whisper and MoviePy
-ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-# Copy to current directory as ffmpeg.exe so Whisper can find it
-if not os.path.exists("ffmpeg.exe"):
-    try:
-        shutil.copy(ffmpeg_exe, "ffmpeg.exe")
-    except Exception as e:
-        print(f"Warning: Could not copy ffmpeg: {e}")
-
-# Add current directory to PATH
-os.environ["PATH"] += os.pathsep + os.getcwd()
-
-# Tell MoviePy where it is
-# os.environ["FFMPEG_BINARY"] = os.path.abspath("ffmpeg.exe")
-
-
-# =========================
-# CONSTANTS
-# =========================
-
-EXPECTED_DECLARATION = "म मेरो ऋणको सबै नियम र सर्तहरू स्वीकार गर्दछु र समयमै चुक्ता गर्ने वाचा गर्दछु"
-
-SIMILARITY_THRESHOLD = 0.80   # Tolerant for Nepali ASR
-
-
-# =========================
-# TEXT NORMALIZATION
-# =========================
-
-def normalize_text(text: str) -> str:
-    """
-    Normalize text for strict comparison
-    """
-    text = text.lower()
-    text = re.sub(r"[^\w\s]", "", text)  # remove punctuation
-    text = re.sub(r"\s+", " ", text)    # normalize spaces
-    return text.strip()
-
-
-def declaration_match(spoken_text: str) -> bool:
-    """
-    Strict declaration verification with tolerance for ASR noise
-    """
-    expected = normalize_text(EXPECTED_DECLARATION)
-    spoken = normalize_text(spoken_text)
-
-    similarity = SequenceMatcher(None, expected, spoken).ratio()
-    
-    print(f"\n[DEBUG] Declaration Match:")
-    print(f"  Expected: '{expected}'")
-    print(f"  Spoken:   '{spoken}'")
-    print(f"  Similarity: {similarity:.4f} (Threshold: {SIMILARITY_THRESHOLD})")
-    
-    return similarity >= SIMILARITY_THRESHOLD
+# No additional setup needed for face verification only
 
 
 # =========================
@@ -125,67 +62,21 @@ def extract_frames(video_path: str) -> List[str]:
 
 
 # =========================
-# VIDEO → AUDIO EXTRACTION
-# =========================
-
-def extract_audio(video_path: str) -> str:
-    """
-    Extract audio from video using moviepy
-    """
-    print(f"\n[DEBUG] Extracting audio from: {video_path}")
-    audio_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-    
-    try:
-        from moviepy.editor import VideoFileClip
-        video = VideoFileClip(video_path)
-        if video.audio is None:
-            raise Exception("Video has no audio track")
-             
-        video.audio.write_audiofile(audio_path, codec='pcm_s16le')
-        video.close()
-    except Exception as e:
-        if os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-            except:
-                pass
-        raise Exception(f"Audio extraction failed: {str(e)}")
-
-    print(f"[DEBUG] Audio extracted to: {audio_path}")
-    return audio_path
-
-
-# =========================
-# SPEECH → TEXT (WHISPER)
-# =========================
-
-def speech_to_text(audio_path: str) -> str:
-    """
-    Convert Nepali speech to text using Whisper
-    """
-    import whisper
-    print(f"\n[DEBUG] Transcribing audio...")
-    model = whisper.load_model("base")
-    result = model.transcribe(audio_path, language="ne")
-    print(f"[DEBUG] Raw Transcription: {result['text']}")
-    return result["text"]
-
-
-# =========================
 # FACE MATCH (ARC FACE)
 # =========================
 
-def face_match(video_frame_path: str, id_image_path: str) -> bool:
+def face_match(video_frame_path: str, photo_path: str) -> tuple[bool, float]:
     """
-    Compare face from video frame with citizenship ID
+    Compare face from video frame with live photo
+    Returns: (match_success, distance_score)
     """
     from deepface import DeepFace
     try:
         result = DeepFace.verify(
             img1_path=video_frame_path,
-            img2_path=id_image_path,
+            img2_path=photo_path,
             model_name="ArcFace",
-            detector_backend="opencv",
+            detector_backend="retinaface",  # More robust than opencv
             enforce_detection=True,
             align=True
         )
@@ -198,14 +89,14 @@ def face_match(video_frame_path: str, id_image_path: str) -> bool:
         print(f"  Frame: {os.path.basename(video_frame_path)}")
         print(f"  Distance: {distance:.4f} (Threshold: {threshold:.4f})")
         
-        return verified
+        return verified, distance
 
     except ValueError as e:
         print(f"[DEBUG] Face detection failed for {os.path.basename(video_frame_path)}: {e}")
-        return False
+        return False, None
     except Exception as e:
         print(f"[DEBUG] Face Match Error for {os.path.basename(video_frame_path)}: {e}")
-        return False
+        return False, None
 
 
 # =========================
@@ -214,33 +105,36 @@ def face_match(video_frame_path: str, id_image_path: str) -> bool:
 
 def verify_video_identity(
     video_path: str,
-    citizenship_image_path: str,
+    reference_photo_path: str,
 ) -> dict:
     """
-    FINAL verification entry point
+    Video identity verification - Face matching only
+    Compares video frames against a live reference photo
     """
     print("="*40)
-    print("STARTING VIDEO VERIFICATION")
+    print("STARTING VIDEO VERIFICATION (FACE ONLY)")
     print("="*40)
 
+    # Extract frames from video
     frames = extract_frames(video_path)
-    audio_path = extract_audio(video_path)
-
-    spoken_text = speech_to_text(audio_path)
-
-    speech_verified = declaration_match(spoken_text)
-    if not speech_verified:
-        print("\n[RESULT] Declaration mismatch")
-    else:
-        print("\n[RESULT] Declaration matched!")
-
-    print(f"\n[DEBUG] Verifying faces against: {citizenship_image_path}")
+    
+    print(f"\n[DEBUG] Verifying face against reference photo: {reference_photo_path}")
     face_verified = False
+    best_face_distance = None
+    matched_frame = None
     
     for frame in frames:
-        if face_match(frame, citizenship_image_path):
+        match_result, distance = face_match(frame, reference_photo_path)
+        
+        # Track best distance even if not verified
+        if distance is not None:
+            if best_face_distance is None or distance < best_face_distance:
+                best_face_distance = distance
+        
+        if match_result:
             face_verified = True
-            print(f"[DEBUG] Face verified on frame {os.path.basename(frame)}!")
+            matched_frame = os.path.basename(frame)
+            print(f"[DEBUG] Face verified on frame {matched_frame}!")
             break
     
     if not face_verified:
@@ -248,19 +142,15 @@ def verify_video_identity(
     else:
         print("\n[RESULT] Face verification PASSED")
 
-    final_status = "APPROVED" if (speech_verified and face_verified) else "REJECTED"
-    
-    reasons = []
-    if not speech_verified:
-        reasons.append("Declaration sentence mismatch")
-    if not face_verified:
-        reasons.append("Face does not match citizenship ID")
+    final_status = "APPROVED" if face_verified else "REJECTED"
+    reason = None if face_verified else "Face does not match reference photo"
 
     return {
         "face_match": face_verified,
-        "speech_match": speech_verified,
+        "face_distance": best_face_distance,
+        "matched_frame": matched_frame,
         "final_status": final_status,
-        "reason": ", ".join(reasons) if reasons else None,
+        "reason": reason,
     }
 
 
@@ -270,9 +160,12 @@ def verify_video_identity(
 
 if __name__ == "__main__":
     result = verify_video_identity(
-        video_path="sample_video.mp4",
-        citizenship_image_path="citizenship.jpeg",
+        video_path="bacha.mp4",
+        reference_photo_path="photo.jpeg",
     )
 
+    print("\n" + "="*40)
     print("VIDEO VERIFICATION RESULT:")
-    print(result)
+    print("="*40)
+    for key, value in result.items():
+        print(f"{key}: {value}")

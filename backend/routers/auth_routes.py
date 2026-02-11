@@ -9,7 +9,8 @@ from auth.auth_service import (
 )
 
 from auth.auth_dependency import get_current_user
-from db.database import get_item, get_all_items
+from db.database import get_item, get_all_items, get_user_loan_summary, get_user_profile_data
+from services.loan_service import get_credit_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -98,41 +99,26 @@ def logout(payload: dict):
 
 @router.get("/me")
 def me(current_user=Depends(get_current_user)):
-    """Return live user profile info based on session token."""
+    """Return live user profile info based on session token — single DB connection."""
     phone = current_user
-    user = get_item("users", phone) or {}
+
+    # Single connection fetches user + kyc + credit_score + loan summary
+    profile = get_user_profile_data(phone)
+    user = profile["user"]
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    kyc_data = get_item("kyc", phone) or {}
+    kyc_data = profile["kyc"] or {}
     kyc_status = kyc_data.get("status") or "INCOMPLETE"
     kyc_verified = kyc_status == "APPROVED"
 
-    credit_score = get_item("credit_scores", phone)
-
-    all_loans = get_all_items("loans")
-    borrower_active = False
-    lender_active = False
-    total_borrowed = 0
-    total_lended = 0
-
-    for loan in all_loans.values():
-        if loan.get("user_id") == phone:
-            total_borrowed += int(loan.get("amount") or 0)
-            if loan.get("status") in ["LISTED", "ACTIVE", "AWAITING_SIGNATURE"]:
-                borrower_active = True
-        if loan.get("lender_id") == phone:
-            total_lended += int(loan.get("amount") or 0)
-            if loan.get("status") in ["ACTIVE", "REPAID"]:
-                lender_active = True
-
-    active_role = "none"
-    if borrower_active and not lender_active:
-        active_role = "borrower"
-    elif lender_active and not borrower_active:
-        active_role = "lender"
-    elif borrower_active and lender_active:
-        active_role = "both"
+    # Calculate borrowing limit based on credit score
+    borrowing_limit = 0
+    if profile["credit_score"] is not None:
+        try:
+            borrowing_limit = get_credit_limit(phone)
+        except:
+            borrowing_limit = 50000  # Default fallback
 
     return {
         "firstName": user.get("first_name") or user.get("firstName") or "",
@@ -143,8 +129,9 @@ def me(current_user=Depends(get_current_user)):
         "createdAt": user.get("created_at"),
         "kycVerified": kyc_verified,
         "kycStatus": kyc_status,
-        "creditScore": credit_score,
-        "activeRole": active_role,
-        "totalLended": total_lended,
-        "totalBorrowed": total_borrowed,
+        "creditScore": profile["credit_score"],
+        "activeRole": profile["active_role"],
+        "totalLended": profile["total_lended"],
+        "totalBorrowed": profile["total_borrowed"],
+        "borrowingLimit": borrowing_limit,
     }

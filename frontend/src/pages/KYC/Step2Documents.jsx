@@ -1,7 +1,7 @@
 import { Upload } from 'lucide-react';
 import '../../styles/Auth.css';
 
-const Step2Documents = ({ data, updateData, nextStep, prevStep }) => {
+const Step2Documents = ({ data, updateData, nextStep, prevStep, loading }) => {
     const handleChange = (e) => {
         updateData(e.target.name, e.target.value);
     };
@@ -104,8 +104,10 @@ const Step2Documents = ({ data, updateData, nextStep, prevStep }) => {
             </div>
 
             <div className="flex justify-between mt-8">
-                <button type="button" onClick={prevStep} className="btn btn-outline">Back</button>
-                <button type="submit" className="btn btn-primary">Next Step</button>
+                <button type="button" onClick={prevStep} className="btn btn-outline" disabled={loading}>Back</button>
+                <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? 'Uploading...' : 'Next Step'}
+                </button>
             </div>
         </form>
     );

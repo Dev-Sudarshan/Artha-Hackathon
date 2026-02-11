@@ -35,6 +35,13 @@ const KYC = () => {
         if (!authLoading && !user) {
             navigate('/login');
         }
+        // Redirect if KYC already submitted (pending/processing/verified)
+        if (!authLoading && user) {
+            const status = user.kycStatus;
+            if (status === 'verified' || status === 'pending_admin_review' || status === 'processing') {
+                navigate('/profile');
+            }
+        }
     }, [authLoading, user, navigate]);
 
     useEffect(() => {
@@ -138,24 +145,19 @@ const KYC = () => {
             const text = "I declare that the information provided is true.";
             if (!formData.livePhoto) {
                 alert('Please capture your photo first.');
+                setLoading(false);
                 return;
             }
 
             await kycService.submitSelfie(user.phone, formData.livePhoto, text);
 
-            const refreshed = await refreshUser();
-            if (refreshed?.kycStatus === 'verified') {
-                alert('KYC Verified Successfully!');
-                navigate('/profile');
-            } else if (String(refreshed?.kycStatus || '').toLowerCase() === 'rejected') {
-                alert('KYC was rejected. Please try again.');
-            } else {
-                alert('KYC submitted. Status: ' + (refreshed?.kycStatus || 'pending'));
-                navigate('/profile');
-            }
+            // Verification now runs in background - don't wait for it
+            await refreshUser();
+            alert('KYC submitted successfully! Verification is being processed. You will be notified once reviewed.');
+            navigate('/profile');
         } catch (error) {
             console.error("Step 3 Error", error);
-            alert("Verification failed: " + (error.response?.data?.detail || error.message));
+            alert("Submission failed: " + (error.response?.data?.detail || error.message));
         } finally {
             setLoading(false);
         }
@@ -186,6 +188,7 @@ const KYC = () => {
                             updateData={updateData}
                             nextStep={handleStep1Submit}
                             user={user}
+                            loading={loading}
                         />
                     )}
                     {step === 2 && (
@@ -194,6 +197,7 @@ const KYC = () => {
                             updateData={updateData}
                             nextStep={handleStep2Submit}
                             prevStep={prevStep}
+                            loading={loading}
                         />
                     )}
                     {step === 3 && (
@@ -202,6 +206,7 @@ const KYC = () => {
                             updateData={updateData}
                             submit={handleSubmit}
                             prevStep={prevStep}
+                            loading={loading}
                         />
                     )}
                 </div>

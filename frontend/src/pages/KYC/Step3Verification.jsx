@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
 import { RefreshCw, Camera } from 'lucide-react';
 
-const Step3Verification = ({ data, updateData, submit, prevStep }) => {
+const Step3Verification = ({ data, updateData, submit, prevStep, loading }) => {
     const webcamRef = useRef(null);
     const [capturedImage, setCapturedImage] = useState(data.livePhotoUrl || null);
 
@@ -96,9 +96,9 @@ const Step3Verification = ({ data, updateData, submit, prevStep }) => {
             </div>
 
             <div className="flex justify-between mt-8">
-                <button type="button" onClick={prevStep} className="btn btn-outline">Back</button>
-                <button type="button" onClick={handleSubmit} className="btn btn-primary btn-lg" disabled={!capturedImage}>
-                    Submit Verification
+                <button type="button" onClick={prevStep} className="btn btn-outline" disabled={loading}>Back</button>
+                <button type="button" onClick={handleSubmit} className="btn btn-primary btn-lg" disabled={!capturedImage || loading}>
+                    {loading ? 'Submitting...' : 'Submit Verification'}
                 </button>
             </div>
         </div>

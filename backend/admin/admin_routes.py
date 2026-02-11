@@ -43,9 +43,10 @@ def _parse_date(value: Any) -> Optional[date]:
     dt = _parse_datetime(value)
     return dt.date() if dt else None
 
-def get_user_type(user_phone: str) -> str:
+def get_user_type(user_phone: str, all_loans: dict = None) -> str:
     """Determine if user is borrower or lender based on loan history"""
-    all_loans = get_all_items("loans")
+    if all_loans is None:
+        all_loans = get_all_items("loans")
     
     is_borrower = False
     is_lender = False
@@ -65,10 +66,16 @@ def get_user_type(user_phone: str) -> str:
     return "unknown"
 
 
-def transform_to_borrower(user_phone: str, user_data: dict, index: int) -> schemas.BorrowerOut:
+def transform_to_borrower(user_phone: str, user_data: dict, index: int, all_loans: dict = None, all_kyc: dict = None, all_scores: dict = None) -> schemas.BorrowerOut:
     """Transform JSONB user data to BorrowerOut schema"""
-    kyc_data = get_item("kyc", user_phone) or {}
-    credit_score = get_item("credit_scores", user_phone) or 600
+    if all_kyc is not None:
+        kyc_data = all_kyc.get(user_phone) or {}
+    else:
+        kyc_data = get_item("kyc", user_phone) or {}
+    if all_scores is not None:
+        credit_score = all_scores.get(user_phone) or 600
+    else:
+        credit_score = get_item("credit_scores", user_phone) or 600
     
     # Get basic info from KYC if available
     basic_info = kyc_data.get("basic_info", {})
@@ -78,7 +85,8 @@ def transform_to_borrower(user_phone: str, user_data: dict, index: int) -> schem
     risk_score = max(0, min(100, (850 - credit_score) / 8.5))
     
     # Determine status based on loans
-    all_loans = get_all_items("loans")
+    if all_loans is None:
+        all_loans = get_all_items("loans")
     status = "INACTIVE"
     for loan in all_loans.values():
         if loan.get("user_id") == user_phone:
@@ -99,16 +107,20 @@ def transform_to_borrower(user_phone: str, user_data: dict, index: int) -> schem
     )
 
 
-def transform_to_lender(user_phone: str, user_data: dict, index: int) -> schemas.LenderOut:
+def transform_to_lender(user_phone: str, user_data: dict, index: int, all_loans: dict = None, all_kyc: dict = None) -> schemas.LenderOut:
     """Transform JSONB user data to LenderOut schema"""
-    kyc_data = get_item("kyc", user_phone) or {}
+    if all_kyc is not None:
+        kyc_data = all_kyc.get(user_phone) or {}
+    else:
+        kyc_data = get_item("kyc", user_phone) or {}
     
     # Get basic info from KYC if available
     basic_info = kyc_data.get("basic_info", {})
     full_name = f"{basic_info.get('first_name', '')} {basic_info.get('last_name', '')}".strip() or user_phone
     
     # Calculate portfolio value from active loans
-    all_loans = get_all_items("loans")
+    if all_loans is None:
+        all_loans = get_all_items("loans")
     portfolio_value = 0.0
     for loan in all_loans.values():
         if loan.get("lender_id") == user_phone and loan.get("status") == "ACTIVE":
@@ -139,9 +151,9 @@ def transform_to_loan(loan_id: str, loan_data: dict, index: int) -> schemas.Loan
     )
 
 
-def transform_to_kyc(user_id: str, kyc_data: dict, index: int) -> schemas.KycRecordOut:
+def transform_to_kyc(user_id: str, kyc_data: dict, index: int, all_loans: dict = None, all_users: dict = None) -> schemas.KycRecordOut:
     """Transform JSONB KYC data to KycRecordOut schema"""
-    user_type = get_user_type(user_id)
+    user_type = get_user_type(user_id, all_loans=all_loans)
 
     basic_info = (kyc_data.get("basic_info") or {})
     full_name = " ".join(
@@ -152,7 +164,10 @@ def transform_to_kyc(user_id: str, kyc_data: dict, index: int) -> schemas.KycRec
         ]
     ).strip()
     if not full_name:
-        user = get_item("users", user_id) or {}
+        if all_users is not None:
+            user = all_users.get(user_id) or {}
+        else:
+            user = get_item("users", user_id) or {}
         full_name = " ".join(
             [
                 str(user.get("first_name") or user.get("firstName") or "").strip(),
@@ -328,6 +343,8 @@ def list_borrowers(
     """
     all_users = get_all_items("users")
     all_loans = get_all_items("loans")
+    all_kyc = get_all_items("kyc")
+    all_scores = get_all_items("credit_scores")
     
     # Find all users who have borrowed
     borrower_phones = set()
@@ -339,7 +356,7 @@ def list_borrowers(
     borrowers = []
     for idx, phone in enumerate(borrower_phones):
         user_data = all_users.get(phone, {})
-        borrower = transform_to_borrower(phone, user_data, idx + 1)
+        borrower = transform_to_borrower(phone, user_data, idx + 1, all_loans=all_loans, all_kyc=all_kyc, all_scores=all_scores)
         
         # Apply filters
         if status and borrower.status != status:
@@ -382,6 +399,7 @@ def list_lenders(
     """
     all_users = get_all_items("users")
     all_loans = get_all_items("loans")
+    all_kyc = get_all_items("kyc")
     
     # Find all users who have lent
     lender_phones = set()
@@ -393,7 +411,7 @@ def list_lenders(
     lenders = []
     for idx, phone in enumerate(lender_phones):
         user_data = all_users.get(phone, {})
-        lender = transform_to_lender(phone, user_data, idx + 1)
+        lender = transform_to_lender(phone, user_data, idx + 1, all_loans=all_loans, all_kyc=all_kyc)
         
         # Apply filters
         if kyc_status and lender.kyc_status != kyc_status:
@@ -519,11 +537,13 @@ def list_kyc(
     List all KYC records from Artha JSONB database
     """
     all_kyc = get_all_items("kyc")
+    all_loans = get_all_items("loans")
+    all_users = get_all_items("users")
     
     # Transform to KycRecordOut schema
     kyc_records = []
     for idx, (user_id, kyc_data) in enumerate(all_kyc.items()):
-        record = transform_to_kyc(user_id, kyc_data, idx + 1)
+        record = transform_to_kyc(user_id, kyc_data, idx + 1, all_loans=all_loans, all_users=all_users)
         
         # Apply filters
         if status and record.status != status:
