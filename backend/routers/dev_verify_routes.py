@@ -3,13 +3,13 @@ import os
 import shutil
 import uuid
 
-from models.citizenship_ocr_model import extract_ocr_fields, verify_citizenship_card
+from models.citizenship_ocr_model import verify_citizenship_card
 from models.face_pipeline import (
     check_liveness_single_image,
     check_liveness_video,
-    verify_faces,
     verify_faces_from_video,
 )
+from models.image_verification_model import verify_face_identity
 
 router = APIRouter(prefix="/dev", tags=["dev"])
 
@@ -38,7 +38,6 @@ async def dev_ocr_check(
     try:
         front_path = _save_upload(front_image)
 
-        ocr_fields = extract_ocr_fields(front_path)
         verify_result = verify_citizenship_card(
             image_path=front_path,
             input_full_name=full_name,
@@ -47,7 +46,7 @@ async def dev_ocr_check(
         )
 
         return {
-            "ocr": ocr_fields,
+            "ocr": verify_result.get("extracted_fields", {}),
             "verification": verify_result,
         }
     except Exception as e:
@@ -72,7 +71,7 @@ async def dev_face_match(
             liveness_result = check_liveness_video(video_path)
         elif selfie_image is not None:
             selfie_path = _save_upload(selfie_image)
-            face_result = verify_faces(
+            face_result = verify_face_identity(
                 id_image_path=id_path,
                 selfie_image_path=selfie_path,
             )

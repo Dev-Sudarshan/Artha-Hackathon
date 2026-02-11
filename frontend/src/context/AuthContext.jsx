@@ -31,28 +31,40 @@ export const AuthProvider = ({ children }) => {
         const bootstrap = async () => {
             try {
                 const storedUser = localStorage.getItem('artha_user');
+                console.log('[AuthContext] Bootstrap - stored user:', storedUser ? 'found' : 'not found');
                 if (storedUser) {
                     const parsed = JSON.parse(storedUser);
+                    console.log('[AuthContext] Parsed user:', parsed.firstName, 'token:', parsed.token ? 'exists' : 'missing');
                     setUser(parsed);
                     setLoading(false); // Show UI immediately with cached data
 
                     // Refresh from backend in background (non-blocking)
                     if (parsed?.token) {
+                        console.log('[AuthContext] Refreshing user data from backend...');
                         authService.me(parsed.token)
                             .then(me => {
+                                console.log('[AuthContext] Refresh success:', me.firstName);
                                 const mapped = mapUser(me, parsed.token);
                                 setUser(mapped);
                                 localStorage.setItem('artha_user', JSON.stringify(mapped));
                             })
                             .catch(e => {
-                                console.warn('Failed to refresh /auth/me', e);
+                                console.warn('[AuthContext] Failed to refresh /auth/me', e);
+                                // If token is invalid/expired, clear session
+                                if (e.response?.status === 401) {
+                                    console.log('[AuthContext] Token expired (401), clearing session');
+                                    setCachedToken(null);
+                                    setUser(null);
+                                    localStorage.removeItem('artha_user');
+                                }
                             });
                     }
                 } else {
+                    console.log('[AuthContext] No stored user, setting loading false');
                     setLoading(false);
                 }
             } catch (error) {
-                console.error("Failed to parse user from storage", error);
+                console.error("[AuthContext] Failed to parse user from storage", error);
                 localStorage.removeItem('artha_user');
                 setLoading(false);
             }

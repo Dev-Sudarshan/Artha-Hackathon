@@ -227,6 +227,10 @@ def _run_verification_background(user_id: str):
             )
             print(f"[KYC BG] OCR Result: {ocr_result}")
 
+            # Store the extracted OCR data in the database
+            kyc_data["id_documents"]["ocr_extracted"] = ocr_result.get("extracted_fields", {})
+            put_item("kyc", user_id, kyc_data)  # Save immediately so OCR data is available
+
             thumbprint_detected = extract_thumbprint(back_image_ref)
             face_detected = detect_face_on_card(front_image_ref)
             print(f"[KYC BG] Detections: Thumb:{thumbprint_detected}, Face:{face_detected}")

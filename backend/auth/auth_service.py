@@ -19,17 +19,23 @@ def register_user(
     if existing and existing.get("is_verified"):
         raise ValueError("User already exists and is verified. Please login.")
 
+    password_hash = hash_password(password)
+    print(f"[REGISTER DEBUG] Phone: {phone}")
+    print(f"[REGISTER DEBUG] Password: {password}")
+    print(f"[REGISTER DEBUG] Password hash: {password_hash[:50]}...")
+    
     new_user = {
         "first_name": first_name,
         "middle_name": middle_name,
         "last_name": last_name,
         "dob": dob,
         "phone": phone,
-        "password_hash": hash_password(password),
+        "password_hash": password_hash,
         "is_verified": False,
         "created_at": datetime.utcnow().isoformat(),
     }
     put_item("users", phone, new_user)
+    print(f"[REGISTER DEBUG] User stored successfully")
 
     send_otp(phone)
 
@@ -64,10 +70,17 @@ def login_user(phone: str, password: str, otp: str = None) -> dict:
     Login existing user with optional OTP
     """
     user = get_item("users", phone)
+    print(f"[LOGIN DEBUG] Phone: {phone}")
+    print(f"[LOGIN DEBUG] User found: {user is not None}")
     if not user:
         raise ValueError("User not found")
 
-    if not verify_password(password, user["password_hash"]):
+    print(f"[LOGIN DEBUG] Stored hash: {user.get('password_hash', 'MISSING')[:50]}...")
+    print(f"[LOGIN DEBUG] Password provided: {password}")
+    password_match = verify_password(password, user["password_hash"])
+    print(f"[LOGIN DEBUG] Password match: {password_match}")
+    
+    if not password_match:
         raise ValueError("Invalid credentials")
 
     # If OTP is provided, verify it

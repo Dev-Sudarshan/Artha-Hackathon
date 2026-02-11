@@ -1,3 +1,8 @@
 .venv
 .venv311
+generated_pdfs
+__pycache__
+*.pyc
+static
+venv310
 
