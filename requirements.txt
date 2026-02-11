@@ -1,0 +1,21 @@
+requests
+fastapi[standard]
+pydantic
+uvicorn[standard]
+fastapi-cli
+psycopg2-binary
+SQLAlchemy
+reportlab
+pytesseract
+deepface
+opencv-python
+openai-whisper
+moviepy
+imageio-ffmpeg
+tf-keras
+insightface; python_version < '3.13'
+onnxruntime
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+

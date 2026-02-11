@@ -1,0 +1,122 @@
+.section-padding {
+    padding: 7rem 0;
+}
+
+.section-header {
+    margin-bottom: 6rem;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.section-header h2 {
+    font-size: 3.1rem;
+    color: var(--color-text-main);
+    margin-bottom: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-family: var(--font-display);
+}
+
+.section-header p {
+    color: var(--color-text-muted);
+    font-size: 1.15rem;
+    line-height: 1.7;
+    font-weight: 500;
+}
+
+.steps-container {
+    display: flex;
+    justify-content: space-between;
+    gap: 2rem;
+    position: relative;
+    padding-top: 2rem;
+}
+
+.step-card {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+    background: white;
+    padding: 3.2rem 2.2rem;
+    border-radius: var(--radius-xl);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
+}
+
+.step-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-lg);
+    border-color: rgba(15, 76, 92, 0.2);
+}
+
+.step-icon {
+    width: 84px;
+    height: 84px;
+    background-color: rgba(15, 76, 92, 0.08);
+    border-radius: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 2rem;
+    color: var(--color-primary-dark);
+    transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+    border: 1px solid rgba(15, 76, 92, 0.2);
+}
+
+.step-card:hover .step-icon {
+    background: var(--color-primary-dark);
+    color: white;
+    transform: translateY(-4px);
+}
+
+.step-card h3 {
+    font-size: 1.45rem;
+    margin-bottom: 1rem;
+    color: var(--color-text-main);
+    font-weight: 700;
+    font-family: var(--font-display);
+}
+
+.step-card p {
+    color: var(--color-text-muted);
+    font-size: 1rem;
+    line-height: 1.7;
+    font-weight: 500;
+}
+
+/* Sophisticated Connector Line */
+.step-connector {
+    position: absolute;
+    top: 62px;
+    left: calc(50% + 48px);
+    width: calc(100% - 96px);
+    height: 2px;
+    background: linear-gradient(to right, rgba(15, 76, 92, 0.4) 0%, var(--color-border) 100%);
+    z-index: 0;
+    opacity: 0.25;
+}
+
+@media (max-width: 1024px) {
+    .steps-container {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 3rem;
+    }
+
+    .step-connector {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .section-header h2 {
+        font-size: 2.75rem;
+    }
+
+    .steps-container {
+        grid-template-columns: 1fr;
+    }
+}
