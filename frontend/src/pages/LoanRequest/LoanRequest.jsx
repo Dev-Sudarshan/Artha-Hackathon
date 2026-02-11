@@ -326,8 +326,8 @@ const LoanRequest = () => {
                                 </div>
                             </div>
 
-                            <button type="submit" className="btn btn-primary w-100 py-5 text-lg shadow-xl shadow-blue-500/20">
-                                Continue to Verification <ArrowRight size={20} />
+                            <button type="submit" className="btn btn-primary w-100 py-5 text-lg shadow-xl shadow-blue-500/20" disabled={loading}>
+                                {loading ? 'Processing...' : <><span>Continue to Verification</span> <ArrowRight size={20} /></>}
                             </button>
                         </form>
                     ) : (
@@ -398,8 +398,10 @@ const LoanRequest = () => {
                             </div>
 
                             <div className="flex gap-6">
-                                <button type="button" onClick={() => setStep(1)} className="btn btn-outline flex-1 py-5">Previous</button>
-                                <button type="submit" className="btn btn-primary flex-[2] py-5 shadow-xl shadow-blue-500/20">Submit Loan Application</button>
+                                <button type="button" onClick={() => setStep(1)} className="btn btn-outline flex-1 py-5" disabled={loading}>Previous</button>
+                                <button type="submit" className="btn btn-primary flex-[2] py-5 shadow-xl shadow-blue-500/20" disabled={loading}>
+                                    {loading ? 'Submitting Application...' : 'Submit Loan Application'}
+                                </button>
                             </div>
                         </form>
                     )}

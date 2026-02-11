@@ -10,15 +10,27 @@ const api = axios.create({
     },
 });
 
-// Request Interceptor: Attach Token
+// ---- In-memory token cache (avoids JSON.parse on every request) ----
+let _cachedToken = null;
+
+export function setCachedToken(token) {
+    _cachedToken = token;
+}
+
+// Hydrate token from localStorage once on load
+try {
+    const stored = localStorage.getItem('artha_user');
+    if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.token) _cachedToken = parsed.token;
+    }
+} catch { /* ignore */ }
+
+// Request Interceptor: Attach Token (from memory, no JSON.parse)
 api.interceptors.request.use(
     (config) => {
-        const userStr = localStorage.getItem('artha_user');
-        if (userStr) {
-            const user = JSON.parse(userStr);
-            if (user?.token) {
-                config.headers.Authorization = `Bearer ${user.token}`;
-            }
+        if (_cachedToken) {
+            config.headers.Authorization = `Bearer ${_cachedToken}`;
         }
         return config;
     },
@@ -31,8 +43,8 @@ api.interceptors.response.use(
     (error) => {
         if (error.response && error.response.status === 401) {
             // Token expired or invalid
+            _cachedToken = null;
             localStorage.removeItem('artha_user');
-            // Optional: Redirect to login or trigger event
             window.location.href = '/login';
         }
         return Promise.reject(error);

@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AdminAuthProvider, useAdminAuth } from './context/AdminAuthContext';
 import AdminLogin from './pages/AdminLogin/AdminLogin';
-import Dashboard from './pages/Dashboard/Dashboard';
-import Borrowers from './pages/Borrowers/Borrowers';
-import Lenders from './pages/Lenders/Lenders';
-import Loans from './pages/Loans/Loans';
-import KYC from './pages/KYC/KYC';
-import Transactions from './pages/Transactions/Transactions';
 import Sidebar from './components/Sidebar/Sidebar';
 import Header from './components/Header/Header';
 import './App.css';
+
+// Lazy load admin pages
+const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
+const Borrowers = lazy(() => import('./pages/Borrowers/Borrowers'));
+const Lenders = lazy(() => import('./pages/Lenders/Lenders'));
+const Loans = lazy(() => import('./pages/Loans/Loans'));
+const KYC = lazy(() => import('./pages/KYC/KYC'));
+const Transactions = lazy(() => import('./pages/Transactions/Transactions'));
 
 const ProtectedRoute = ({ children }) => {
   const { admin, loading } = useAdminAuth();
@@ -29,7 +31,9 @@ const ProtectedRoute = ({ children }) => {
       <div className="admin-main">
         <Header />
         <main className="admin-content">
-          {children}
+          <Suspense fallback={<div className="loading-screen">Loading...</div>}>
+            {children}
+          </Suspense>
         </main>
       </div>
     </div>

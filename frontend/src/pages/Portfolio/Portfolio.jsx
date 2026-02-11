@@ -24,7 +24,7 @@ const Portfolio = () => {
             }
         };
         fetchPortfolio();
-    }, [user]);
+    }, [user?.id]);
 
     if (!user) {
         return (

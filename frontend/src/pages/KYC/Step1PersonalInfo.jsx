@@ -1,6 +1,6 @@
 import '../../styles/Auth.css'; // Reuse form styles
 
-const Step1PersonalInfo = ({ data, updateData, nextStep, user }) => {
+const Step1PersonalInfo = ({ data, updateData, nextStep, user, loading }) => {
     const handleChange = (e) => {
         updateData(e.target.name, e.target.value);
     };
@@ -165,7 +165,9 @@ const Step1PersonalInfo = ({ data, updateData, nextStep, user }) => {
 
             <div className="flex justify-between mt-4">
                 <div></div> {/* Spacer */}
-                <button type="submit" className="btn btn-primary">Next Step</button>
+                <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? 'Processing...' : 'Next Step'}
+                </button>
             </div>
         </form>
     );

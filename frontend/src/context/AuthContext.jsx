@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import authService from '../services/authService';
+import { setCachedToken } from '../services/api';
 
 const AuthContext = createContext({
     user: null,
@@ -26,31 +27,33 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Load user from local storage
+        // Load user from local storage INSTANTLY, then refresh from backend in background
         const bootstrap = async () => {
             try {
                 const storedUser = localStorage.getItem('artha_user');
                 if (storedUser) {
                     const parsed = JSON.parse(storedUser);
                     setUser(parsed);
+                    setLoading(false); // Show UI immediately with cached data
 
-                    // Refresh from backend for live status (KYC, role, totals)
+                    // Refresh from backend in background (non-blocking)
                     if (parsed?.token) {
-                        try {
-                            const me = await authService.me(parsed.token);
-                            const mapped = mapUser(me, parsed.token);
-                            setUser(mapped);
-                            localStorage.setItem('artha_user', JSON.stringify(mapped));
-                        } catch (e) {
-                            // If token expired, interceptor will redirect
-                            console.warn('Failed to refresh /auth/me', e);
-                        }
+                        authService.me(parsed.token)
+                            .then(me => {
+                                const mapped = mapUser(me, parsed.token);
+                                setUser(mapped);
+                                localStorage.setItem('artha_user', JSON.stringify(mapped));
+                            })
+                            .catch(e => {
+                                console.warn('Failed to refresh /auth/me', e);
+                            });
                     }
+                } else {
+                    setLoading(false);
                 }
             } catch (error) {
                 console.error("Failed to parse user from storage", error);
                 localStorage.removeItem('artha_user');
-            } finally {
                 setLoading(false);
             }
         };
@@ -63,10 +66,11 @@ export const AuthProvider = ({ children }) => {
         const middleName = backendUser.middleName || backendUser.middle_name || '';
         const lastName = backendUser.lastName || backendUser.last_name || '';
 
+        const rawKyc = String(backendUser.kycStatus || '').toLowerCase();
         const kycStatus = backendUser.kycStatus
-            ? String(backendUser.kycStatus).toLowerCase() === 'approved'
+            ? rawKyc === 'approved'
                 ? 'verified'
-                : String(backendUser.kycStatus).toLowerCase()
+                : rawKyc  // preserves 'processing', 'pending_admin_review', 'rejected', etc.
             : backendUser.kycVerified
                 ? 'verified'
                 : 'incomplete';
@@ -82,7 +86,8 @@ export const AuthProvider = ({ children }) => {
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(firstName)}+${encodeURIComponent(lastName)}&background=0A2540&color=fff`,
             kycStatus,
             activeRole: backendUser.activeRole || 'none',
-            bankDetailsAdded: false, // Default
+            borrowingLimit: backendUser.borrowingLimit || 50000,
+            creditScore: backendUser.creditScore || null,
             totalLended: backendUser.totalLended || 0,
             totalBorrowed: backendUser.totalBorrowed || 0,
             token: token // Important: Store token for API interceptor
@@ -101,20 +106,21 @@ export const AuthProvider = ({ children }) => {
     const login = async (phone, password) => {
         try {
             const data = await authService.login(phone, password);
-            // Store token immediately, then refresh from /auth/me for live data
             const mappedUser = mapUser(data.user, data.token);
+            setCachedToken(data.token);
             setUser(mappedUser);
             localStorage.setItem('artha_user', JSON.stringify(mappedUser));
 
-            try {
-                const me = await authService.me(data.token);
-                const mappedMe = mapUser(me, data.token);
-                setUser(mappedMe);
-                localStorage.setItem('artha_user', JSON.stringify(mappedMe));
-                return mappedMe;
-            } catch {
-                return mappedUser;
-            }
+            // Refresh live data in background (non-blocking)
+            authService.me(data.token)
+                .then(me => {
+                    const mappedMe = mapUser(me, data.token);
+                    setUser(mappedMe);
+                    localStorage.setItem('artha_user', JSON.stringify(mappedMe));
+                })
+                .catch(() => {});
+
+            return mappedUser;
         } catch (error) {
             console.error("Login failed", error);
             throw error; // Propagate to UI
@@ -131,6 +137,7 @@ export const AuthProvider = ({ children }) => {
         // Immediately hydrate the full user from backend
         const me = await authService.me(data.token);
         const mapped = mapUser(me, data.token);
+        setCachedToken(data.token);
         setUser(mapped);
         localStorage.setItem('artha_user', JSON.stringify(mapped));
         return mapped;
@@ -141,6 +148,7 @@ export const AuthProvider = ({ children }) => {
         try {
             if (user?.token) authService.logout(user.token);
         } catch (e) { /* ignore */ }
+        setCachedToken(null);
         setUser(null);
         localStorage.removeItem('artha_user');
     };

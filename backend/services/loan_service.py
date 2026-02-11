@@ -65,15 +65,17 @@ def create_borrow_request(payload: BorrowRequestSchema):
 
     user_id = payload.user_id
 
-    # 0️⃣ Mutual Exclusion: borrower vs lender
-    all_loans = get_all_items("loans")
-    for scan_loan_id, scan_loan in all_loans.items():
-        if scan_loan.get("lender_id") == user_id and scan_loan.get("status") != "REPAID":
-            raise Exception("Active lenders cannot borrow")
-        if scan_loan["user_id"] == user_id:
-            if scan_loan["status"] in ["PENDING_ADMIN_APPROVAL", "LISTED", "ACTIVE", "AWAITING_SIGNATURE"]:
-                if not payload.loan_id or scan_loan_id != payload.loan_id:
-                    raise Exception("You already have an active loan or request")
+    # 0️⃣ Mutual Exclusion: borrower vs lender (optimized query)
+    from db.database import check_user_active_loans
+    active_check = check_user_active_loans(user_id)
+    
+    if active_check["has_active_as_lender"]:
+        raise Exception("Active lenders cannot borrow")
+    
+    if active_check["has_active_as_borrower"]:
+        # Allow if updating the same loan
+        if not payload.loan_id or active_check["active_borrower_loan_id"] != payload.loan_id:
+            raise Exception("You already have an active loan or request")
 
     # 1️⃣ KYC check
     kyc_data = get_item("kyc", user_id) or {}
@@ -199,23 +201,49 @@ def create_borrow_request(payload: BorrowRequestSchema):
 
 def get_marketplace_listings():
     """
-    Public marketplace (LISTED loans only)
+    Public marketplace (LISTED loans only) — batch-fetches user names to avoid N+1.
     """
-    listings = []
+    from db.database import get_connection, release_connection
 
-    loans_map = get_all_items("loans")
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    for loan_id, loan in loans_map.items():
+    # Fetch all loans
+    cursor.execute("SELECT loan_id, json_data FROM loans")
+    loan_rows = cursor.fetchall()
+
+    # Collect user_ids of LISTED loans
+    listed_loans = []
+    user_ids = set()
+    for row in loan_rows:
+        loan = row['json_data']
+        if isinstance(loan, str):
+            import json
+            loan = json.loads(loan)
         if loan.get("status") != "LISTED":
             continue
+        listed_loans.append((row['loan_id'], loan))
+        user_ids.add(loan["user_id"])
 
-        # Fetch borrower name
-        user_id = loan["user_id"]
-        user = get_item("users", user_id)
-        
+    # Batch-fetch all needed users in ONE query
+    users_map = {}
+    if user_ids:
+        # Use ANY() for batch lookup
+        cursor.execute("SELECT phone, json_data FROM users WHERE phone = ANY(%s)", (list(user_ids),))
+        for urow in cursor.fetchall():
+            ud = urow['json_data']
+            if isinstance(ud, str):
+                import json
+                ud = json.loads(ud)
+            users_map[urow['phone']] = ud
+
+    release_connection(conn)
+
+    listings = []
+    for loan_id, loan in listed_loans:
+        user = users_map.get(loan["user_id"])
         borrower_display_name = "Unknown"
         if user:
-            # Format: "Ram K."
             f_name = user.get("first_name", "")
             l_name = user.get("last_name", "")
             if l_name:
