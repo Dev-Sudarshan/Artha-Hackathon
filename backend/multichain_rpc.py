@@ -28,13 +28,23 @@ def call_rpc(method, params=None, rpc_id=1):
         "chain_name": CHAIN_NAME,
     }
 
-    response = requests.post(
-        URL,
-        data=json.dumps(payload),
-        auth=(RPC_USER, RPC_PASSWORD),
-        headers=HEADERS,
-        timeout=5 # Prevent hanging
-    )
+    try:
+        response = requests.post(
+            URL,
+            data=json.dumps(payload),
+            auth=(RPC_USER, RPC_PASSWORD),
+            headers=HEADERS,
+            timeout=5 # Prevent hanging
+        )
+    except requests.exceptions.ConnectionError:
+        print(f"[MultiChain] WARNING: Cannot connect to MultiChain at {URL}. Is it running?")
+        return None
+    except requests.exceptions.Timeout:
+        print(f"[MultiChain] WARNING: Connection to MultiChain timed out.")
+        return None
+    except Exception as e:
+        print(f"[MultiChain] WARNING: RPC call failed: {e}")
+        return None
 
     result = response.json()
     if "error" in result and result["error"]:
@@ -46,22 +56,30 @@ def call_rpc(method, params=None, rpc_id=1):
 # -------- STREAM HELPERS --------
 
 def create_stream(stream_name: str, open_stream: bool = True):
-    return call_rpc("create", ["stream", stream_name, open_stream])
+    result = call_rpc("create", ["stream", stream_name, open_stream])
+    if result is None:
+        print(f"[MultiChain] WARNING: Could not create stream '{stream_name}' - MultiChain not available")
+    return result
 
 
 def publish_to_stream(stream: str, key: str, value: str):
     """
     Publish hash to stream
     """
-    return call_rpc("publish", [stream, key, value])
+    result = call_rpc("publish", [stream, key, value])
+    if result is None:
+        raise Exception(f"MultiChain is not available. Cannot publish to stream '{stream}'.")
+    return result
 
 
 def get_stream_items(stream: str):
-    return call_rpc("liststreamitems", [stream])
+    result = call_rpc("liststreamitems", [stream])
+    return result if result is not None else []
 
 
 def get_stream_key_items(stream: str, key: str):
     """
     Used for audit verification
     """
-    return call_rpc("liststreamkeyitems", [stream, key])
+    result = call_rpc("liststreamkeyitems", [stream, key])
+    return result if result is not None else []

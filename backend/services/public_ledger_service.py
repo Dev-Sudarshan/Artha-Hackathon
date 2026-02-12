@@ -19,17 +19,28 @@ from multichain_rpc import call_rpc
 
 def _list_stream_items(stream_name: str):
     """
-    Fetch all items from a MultiChain stream
+    Fetch all items from a MultiChain stream.
+    Returns empty list if MultiChain is not available.
     """
-    response = call_rpc(
-        method="liststreamitems",
-        params=[stream_name]
-    )
+    try:
+        response = call_rpc(
+            method="liststreamitems",
+            params=[stream_name]
+        )
 
-    if "error" in response and response["error"]:
-        raise Exception(response["error"])
+        if response is None:
+            return []  # MultiChain not available
 
-    return response.get("result", [])
+        if isinstance(response, dict) and "error" in response and response["error"]:
+            raise Exception(response["error"])
+
+        if isinstance(response, list):
+            return response
+
+        return response if response else []
+    except Exception as e:
+        print(f"[PublicLedger] WARNING: Could not fetch stream '{stream_name}': {e}")
+        return []
 
 
 def _normalize_item(item: dict) -> dict:
