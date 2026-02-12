@@ -13,6 +13,7 @@ const Lenders = lazy(() => import('./pages/Lenders/Lenders'));
 const Loans = lazy(() => import('./pages/Loans/Loans'));
 const KYC = lazy(() => import('./pages/KYC/KYC'));
 const Transactions = lazy(() => import('./pages/Transactions/Transactions'));
+const BlockchainExplorer = lazy(() => import('./pages/BlockchainExplorer/BlockchainExplorer'));
 
 const ProtectedRoute = ({ children }) => {
   const { admin, loading } = useAdminAuth();
@@ -105,6 +106,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Transactions />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/blockchain-explorer"
+            element={
+              <ProtectedRoute>
+                <BlockchainExplorer />
               </ProtectedRoute>
             }
           />

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import traceback
 from typing import Optional
 
@@ -21,15 +22,31 @@ import numpy as np
 from models.pipeline import CitizenshipPipeline, PipelineConfig
 
 
-# Singleton pipeline instance (lazy-loaded)
+# Singleton pipeline instance (lazy-loaded) with a lock for thread safety.
+# PaddlePaddle prediction is NOT thread-safe — concurrent calls on the same
+# PaddleOCR instance from different threads produce garbled / partial output.
 _pipeline: Optional[CitizenshipPipeline] = None
+_pipeline_lock = threading.Lock()
 
 
 def _get_pipeline() -> CitizenshipPipeline:
+    """Return a thread-safe pipeline instance.
+
+    Creates a *fresh* instance every time when called from a non-main thread
+    because PaddlePaddle's internal state (memory pool, IR graph) is bound to
+    the thread that created it.  For the main thread we keep the singleton to
+    avoid repeated model loading.
+    """
     global _pipeline
-    if _pipeline is None:
+    if threading.current_thread() is not threading.main_thread():
+        # Background thread: create a dedicated instance so PaddlePaddle
+        # initialises its context on THIS thread.
         cfg = PipelineConfig()
-        _pipeline = CitizenshipPipeline(cfg)
+        return CitizenshipPipeline(cfg)
+    with _pipeline_lock:
+        if _pipeline is None:
+            cfg = PipelineConfig()
+            _pipeline = CitizenshipPipeline(cfg)
     return _pipeline
 
 
@@ -93,12 +110,18 @@ def verify_citizenship_card(
         "error": None,
     }
 
+    print(f"[OCR] image_path = {image_path}")
+    print(f"[OCR] file exists = {os.path.isfile(image_path)}")
+    if os.path.isfile(image_path):
+        print(f"[OCR] file size = {os.path.getsize(image_path)} bytes")
+
     if not os.path.isfile(image_path):
         result["error"] = f"Image file not found: {image_path}"
         return result
 
     try:
         pipeline = _get_pipeline()
+        print(f"[OCR] Pipeline ready (thread={threading.current_thread().name}), running on {image_path}")
         pr = pipeline.run(image_path)
 
         if not pr.success:

@@ -56,3 +56,42 @@ def accept_loan_route(
         return accept_loan(payload)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{loan_id}")
+def delete_loan_route(
+    loan_id: str,
+    current_user=Depends(get_current_user),
+):
+    """
+    Delete/Cancel a loan request by the borrower.
+    Can be deleted if: DRAFT, PENDING_VERIFICATION, PENDING_ADMIN_APPROVAL, or LISTED (not yet accepted by lender)
+    """
+    from db.database import get_item, delete_item
+    
+    loan = get_item("loans", loan_id)
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    
+    # Verify ownership
+    if loan.get("user_id") != current_user:
+        raise HTTPException(status_code=403, detail="You can only delete your own loans")
+    
+    # Check if loan can be deleted
+    status = loan.get("status", "").upper()
+    deletable_statuses = ["DRAFT", "PENDING_VERIFICATION", "PENDING_ADMIN_APPROVAL", "LISTED"]
+    
+    if status not in deletable_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete loan with status '{status}'. Only drafts, pending, or listed (unfunded) loans can be deleted."
+        )
+    
+    # Delete the loan
+    delete_item("loans", loan_id)
+    
+    return {
+        "message": "Loan deleted successfully",
+        "loan_id": loan_id,
+        "status": "DELETED"
+    }

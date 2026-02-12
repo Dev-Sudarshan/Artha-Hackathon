@@ -13,6 +13,38 @@ from models.video_verification import verify_video_identity
 
 from db.database import get_item, put_item, get_all_items
 import uuid
+from urllib.parse import urlparse
+
+
+def _resolve_upload_ref(ref: str) -> str:
+    """Resolve frontend-provided refs (e.g. '/static/uploads/x.png' or full URLs) to local disk paths.
+
+    The AI pipeline expects filesystem paths. The upload API returns browser URLs under /static/uploads.
+    """
+    if not ref:
+        return ref
+
+    text = str(ref).strip().replace('\\', '/').replace('\\\\', '/')
+    # If it's a full URL, extract only the path portion
+    if text.startswith('http://') or text.startswith('https://'):
+        try:
+            text = urlparse(text).path or text
+        except Exception:
+            pass
+
+    # Normalize leading slash variants
+    if text.startswith('static/uploads/'):
+        filename = text.split('static/uploads/', 1)[1]
+    elif text.startswith('/static/uploads/'):
+        filename = text.split('/static/uploads/', 1)[1]
+    else:
+        # Already a filesystem path or non-static reference
+        return ref
+
+    backend_dir = os.path.dirname(__file__)
+    static_dir = os.path.abspath(os.path.join(backend_dir, '..', 'static'))
+    uploads_dir = os.path.join(static_dir, 'uploads')
+    return os.path.join(uploads_dir, filename)
 
 
 # ---- CONSTANTS ----
@@ -79,9 +111,21 @@ def create_borrow_request(payload: BorrowRequestSchema):
 
     # 1️⃣ KYC check
     kyc_data = get_item("kyc", user_id) or {}
-    if not kyc_data or kyc_data.get("status") != "APPROVED":
-        print(f"WARNING: KYC not approved for {user_id}, but bypassing for DEMO")
-        # raise Exception("KYC not approved")
+    if not kyc_data:
+        print(f"WARNING: No KYC data found for {user_id}")
+        raise Exception("KYC not found. Please complete KYC verification first.")
+    
+    kyc_status = kyc_data.get("status")
+    print(f"[DEBUG] KYC status for {user_id}: {kyc_status}")
+    
+    if kyc_status != "VERIFIED":
+        # Allow APPROVED as well (some systems use APPROVED instead of VERIFIED)
+        if kyc_status == "APPROVED":
+            print(f"[DEBUG] Allowing APPROVED status as equivalent to VERIFIED")
+            kyc_data["status"] = "VERIFIED"  # Normalize it
+            put_item("kyc", user_id, kyc_data)
+        else:
+            raise Exception(f"KYC not verified. Current status: {kyc_status}. Admin must approve your KYC first.")
 
     # 2️⃣ Agreement acceptance
     if not payload.agreed_to_rules:
@@ -148,23 +192,25 @@ def create_borrow_request(payload: BorrowRequestSchema):
         tenure_months=payload.tenure_months,
         net_amount_received=net_amount_received,
         net_amount_returned=total_payable,
+        loan_id=loan_id,
     )
 
-    # 9️⃣ Video Verification Enrollment
-    if payload.video_verification_ref:
-        # Get card from KYC
-        front_image_ref = kyc_data["id_documents"]["id_images"]["front_image_ref"]
-        video_result = verify_video_identity(
-            video_path=payload.video_verification_ref,
-            citizenship_image_path=front_image_ref
-        )
-        if video_result["final_status"] != "APPROVED":
-            raise Exception(f"Video verification failed: {video_result.get('reason')}")
-
+    # 9️⃣ Save loan for background video verification
+    # Don't block submission - verify in background like KYC
+    
     # 🔟 Store loan draft (DB)
+    # Determine loan status based on completion
+    # DRAFT: Step 1 completed (basic info + PDF generated)
+    # PENDING_VERIFICATION: Step 2 completed (signed PDF + video uploaded) - AI verification pending
+    is_complete = bool(payload.agreement_pdf_signed and payload.video_verification_ref)
+    loan_status = "PENDING_VERIFICATION" if is_complete else "DRAFT"
+    
     loan_data = {
         "loan_id": loan_id,
         "user_id": user_id,
+        "borrower_name": borrower_name,
+        "borrower_citizenship_no": borrower_cit_no,
+        "borrower_phone": user_id,
         "amount": payload.amount,
         "interest_rate": payload.interest_rate,
         "tenure_months": payload.tenure_months,
@@ -177,17 +223,34 @@ def create_borrow_request(payload: BorrowRequestSchema):
         "agreement_pdf_unsigned": pdf_ref,
         "agreement_pdf_signed": payload.agreement_pdf_signed,
         "video_verification_ref": payload.video_verification_ref,
+        "video_verification_result": None,  # Will be filled by background task
+        "ai_suggestion": None,  # Will be filled by background task
+        "kyc_selfie_ref": kyc_data.get("declaration", {}).get("declaration_video", {}).get("selfie_image_ref"),
         "credit_score": credit_score,
-        "status": "PENDING_ADMIN_APPROVAL",
+        "status": loan_status,
         "created_at": payload.submitted_at, # This is int from frontend
     }
 
     put_item("loans", loan_id, loan_data)
-    print(f"Loan {loan_id} created and awaiting admin approval.")
+    
+    # Trigger background video verification if video was uploaded
+    if payload.video_verification_ref:
+        from services.loan_verification_service import trigger_background_verification
+        try:
+            trigger_background_verification(loan_id)
+            print(f"[INFO] Background video verification triggered for loan {loan_id}")
+        except Exception as bg_err:
+            print(f"[WARNING] Failed to trigger background verification: {bg_err}")
+    
+    if is_complete:
+        print(f"Loan {loan_id} submitted and under AI verification + admin review.")
+    else:
+        print(f"Loan {loan_id} saved as draft.")
 
     return {
         "loan_id": loan_id,
-        "status": "PENDING_ADMIN_APPROVAL",
+        "status": loan_status,
+        "message": "Your loan application is under review. AI verification is running in the background." if is_complete else "Loan draft saved. Complete Step 2 to submit.",
         "agreement_pdf": f"/pdfs/{os.path.basename(pdf_ref)}",
         "emi": emi,
         "total_payable": total_payable,
@@ -314,13 +377,33 @@ def accept_loan(payload: LenderAcceptanceSchema):
         raise Exception("Loan is not available for acceptance")
 
     lender_kyc = get_item("kyc", lender_id)
-    if not lender_kyc or lender_kyc.get("status") != "APPROVED":
-        raise Exception("Lender KYC not approved")
+    if not lender_kyc or lender_kyc.get("status") != "VERIFIED":
+        raise Exception("Lender KYC not verified")
 
     # Update loan
     loan["lender_id"] = lender_id
     loan["status"] = "ACTIVE"
     loan["start_timestamp"] = payload.accepted_at.isoformat()
+
+    # --- BLOCKCHAIN: Store funded loan with full data ---
+    try:
+        from services.blockchain_service import get_blockchain_service
+        from blockchain.utils import sha256_hash
+        bc = get_blockchain_service()
+        success, tx_hash, error = bc.store_loan_on_chain(
+            loan_id=loan_id,
+            loan_data=loan,
+            borrower_address=loan.get("user_id"),
+            lender_address=lender_id,
+        )
+        if success and tx_hash:
+            loan["blockchain_tx_hash"] = tx_hash
+            loan["blockchain_loan_hash"] = sha256_hash(loan)
+            print(f"Loan {loan_id} funded & stored on blockchain. TX: {tx_hash}")
+        else:
+            print(f"Blockchain store returned error on funding: {error}")
+    except Exception as bc_err:
+        print(f"Failed to store funded loan on blockchain: {bc_err}")
 
     put_item("loans", loan_id, loan)
 
@@ -378,7 +461,7 @@ def get_user_portfolio(user_id: str):
     # 1. Borrowing Side
     for loan_id, loan in loans_map.items():
         if loan["user_id"] == user_id:
-            if loan["status"] in ["PENDING_ADMIN_APPROVAL", "LISTED", "ACTIVE", "AWAITING_SIGNATURE"]:
+            if loan["status"] in ["PENDING_VERIFICATION", "PENDING_ADMIN_APPROVAL", "LISTED", "ACTIVE", "AWAITING_SIGNATURE"]:
                 # Count repayments
                 repayments = get_repayments(loan_id)
                 loan["paid_emis"] = len(repayments)

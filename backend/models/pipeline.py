@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import time
+import threading
 import warnings
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -51,6 +52,11 @@ import numpy as np
 from models.canonical_normalizer import CanonicalNormalizer, CanonicalConfig
 from models.layout_analyzer import LayoutAnalyzer, LayoutBox, LayoutResult
 from models.semantic_extractor import SemanticExtractor, SemanticConfig
+
+# Global lock for PaddlePaddle/PaddleOCR predict calls.
+# PaddlePaddle's C++ inference engine is NOT thread-safe;
+# concurrent predict() calls corrupt internal state.
+_paddle_predict_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------- config ---
@@ -170,29 +176,34 @@ class CitizenshipPipeline:
 
         Uses tighter box params for precise word-level detection.
         Falls back to defaults if custom params are rejected.
+        Thread-safe: uses the global predict lock during init too.
         """
         if self._paddle_ocr is not None:
             return
         from paddleocr import PaddleOCR
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            try:
-                self._paddle_ocr = PaddleOCR(
-                    text_detection_model_name=self.cfg.paddle_det_model,
-                    text_recognition_model_name=self.cfg.paddle_rec_model,
-                    use_textline_orientation=False,
-                    # Tighter boxes: lower unclip_ratio = less padding
-                    det_db_thresh=0.3,
-                    det_db_box_thresh=0.5,
-                    det_db_unclip_ratio=1.3,
-                )
-            except Exception:
-                # Fallback to defaults if params not supported
-                self._paddle_ocr = PaddleOCR(
-                    text_detection_model_name=self.cfg.paddle_det_model,
-                    text_recognition_model_name=self.cfg.paddle_rec_model,
-                    use_textline_orientation=False,
-                )
+        with _paddle_predict_lock:
+            # Double-check after acquiring lock
+            if self._paddle_ocr is not None:
+                return
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    self._paddle_ocr = PaddleOCR(
+                        text_detection_model_name=self.cfg.paddle_det_model,
+                        text_recognition_model_name=self.cfg.paddle_rec_model,
+                        use_textline_orientation=False,
+                        # Tighter boxes: lower unclip_ratio = less padding
+                        det_db_thresh=0.3,
+                        det_db_box_thresh=0.5,
+                        det_db_unclip_ratio=1.3,
+                    )
+                except Exception:
+                    # Fallback to defaults if params not supported
+                    self._paddle_ocr = PaddleOCR(
+                        text_detection_model_name=self.cfg.paddle_det_model,
+                        text_recognition_model_name=self.cfg.paddle_rec_model,
+                        use_textline_orientation=False,
+                    )
 
     def _paddleocr_detect_recognize(self, image: np.ndarray) -> List[LayoutBox]:
         """Run PaddleOCR on an enhanced BGR image and return LayoutBox list."""
@@ -202,8 +213,10 @@ class CitizenshipPipeline:
         # Enhance image for better OCR accuracy
         enhanced = _enhance_for_ocr(image)
 
-        # PaddleOCR predict accepts ndarray or file path
-        results = self._paddle_ocr.predict(enhanced)
+        # Serialize PaddlePaddle predict calls across all threads
+        with _paddle_predict_lock:
+            results = self._paddle_ocr.predict(enhanced)
+
         for result in results:
             # result is a dict-like OCRResult — access via dict()
             rd = dict(result)

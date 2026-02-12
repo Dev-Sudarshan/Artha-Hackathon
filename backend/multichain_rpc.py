@@ -1,15 +1,20 @@
 import requests
 import json
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Multichain RPC Configuration
-RPC_HOST = "172.31.25.55"
-RPC_PORT = 6820
-RPC_USER = "multichainrpc"
-RPC_PASSWORD = "HimPrFVxvxT5zhdoUuCXXZ5y62MpaZsFEemgbHBgKngQ"
+RPC_HOST = os.getenv("MULTICHAIN_HOST", "127.0.0.1")
+RPC_PORT = int(os.getenv("MULTICHAIN_PORT", "6836"))
+RPC_USER = os.getenv("MULTICHAIN_USER", "multichainrpc")
+RPC_PASSWORD = os.getenv("MULTICHAIN_PASSWORD", "Frq1yddQ5p5YTqTAJr5YPmry7PiCNCzP9YLDUarKvSJA")
+CHAIN_NAME = os.getenv("MULTICHAIN_CHAIN_NAME", "artha-chain")
 
 URL = f"http://{RPC_HOST}:{RPC_PORT}"
 HEADERS = {"content-type": "application/json"}
-CHAIN_NAME = "artha-chain"
 
 
 def call_rpc(method, params=None, rpc_id=1):

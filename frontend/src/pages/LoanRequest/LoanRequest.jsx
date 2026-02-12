@@ -6,6 +6,9 @@ import { ArrowRight, Calculator, Upload, Video, AlertTriangle, ShieldCheck } fro
 import '../../styles/Auth.css';
 import './LoanRequest.css';
 
+// Backend URL for serving PDFs
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
 const LoanRequest = () => {
     const { user, setUserRole } = useAuth();
     const navigate = useNavigate();
@@ -332,6 +335,21 @@ const LoanRequest = () => {
                         </form>
                     ) : (
                         <form onSubmit={handleSubmit} className="animate-fade">
+                            {/* Info Alert - Draft Status */}
+                            <div className="alert p-6 rounded-2xl bg-blue-50 border-2 border-blue-200 mb-8">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-200 text-blue-800 flex items-center justify-center flex-shrink-0 mt-1">
+                                        <AlertTriangle size={18} />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-blue-900 mb-1">Complete This Step to Submit Your Loan</h4>
+                                        <p className="text-sm text-blue-700 leading-relaxed">
+                                            Your loan details have been saved as a <strong>DRAFT</strong>. To submit for admin approval and make it visible in the marketplace, you must upload both the signed agreement and video verification below.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* ... (Alerts section same as before) ... */}
                             <div className="alert p-8 rounded-3xl bg-amber-50 border border-amber-100 mb-10">
                                 <div className="flex items-center gap-3 text-amber-700 font-black uppercase tracking-widest text-sm mb-4">
@@ -363,43 +381,86 @@ const LoanRequest = () => {
                             </div>
 
                             <div className="form-section-header mb-8 flex items-center gap-4">
-                                <h4 className="text-lg font-black text-slate-900">Legal Document & Identity</h4>
+                                <h4 className="text-lg font-black text-slate-900">Legal Document & Identity Verification</h4>
                                 <div className="h-px flex-1 bg-slate-100"></div>
                             </div>
 
-                            <div className="grid grid-2 gap-8 mb-12">
-                                <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100">
-                                    <h5 className="font-black text-slate-800 mb-3">1. Policy Acceptance</h5>
-                                    <p className="text-sm text-muted mb-6">Download, print, sign, and fingerprint the policy document.</p>
-                                    <a href={agreementPdf} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-black text-primary hover:underline mb-6">
-                                        <Upload size={16} style={{ transform: 'rotate(180deg)' }} /> Download Official Policy (PDF)
+                            {/* Policy Acceptance Section */}
+                            <div className="p-8 rounded-3xl bg-gradient-to-br from-blue-50 to-blue-100/50 border-2 border-blue-200 mb-6">
+                                <div className="flex items-start gap-4 mb-4">
+                                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-lg flex-shrink-0">1</div>
+                                    <div className="flex-1">
+                                        <h5 className="font-black text-slate-900 text-base mb-2">Policy Acceptance</h5>
+                                        <p className="text-sm text-slate-600 leading-relaxed">Download, print, sign, and fingerprint the policy document.</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="ml-14">
+                                    <a 
+                                        href={agreementPdf ? `${BACKEND_BASE_URL}${agreementPdf}` : '#'} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="inline-flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline mb-6 transition-colors"
+                                    >
+                                        <Upload size={16} style={{ transform: 'rotate(180deg)' }} /> 
+                                        Download Official Policy (PDF)
                                     </a>
-                                    <label className="upload-tile upload-tile-md block w-full text-center py-4 rounded-2xl transition-all cursor-pointer">
-                                        <span className="text-xs font-black uppercase text-slate-500">Upload Signed Copy</span>
+                                    
+                                    <label className="block">
+                                        <div className="upload-tile upload-tile-md w-full text-center py-6 rounded-2xl transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]">
+                                            <Upload size={24} className="mx-auto mb-2 text-slate-400" />
+                                            <span className="text-sm font-bold text-slate-700 block mb-1">Upload Signed Copy</span>
+                                            <span className="text-xs text-slate-500">PDF or Image</span>
+                                            {formData.signedDoc && (
+                                                <div className="mt-3 px-4 py-2 bg-green-100 text-green-700 text-xs font-black uppercase tracking-tight rounded-full inline-block">
+                                                    ✓ File Ready
+                                                </div>
+                                            )}
+                                        </div>
                                         <input type="file" name="signedDoc" onChange={handleFile} accept=".pdf,image/*" className="hidden" />
-                                        {formData.signedDoc && <div className="text-success text-[10px] mt-2 font-black uppercase tracking-tight">File Ready ✓</div>}
                                     </label>
                                 </div>
+                            </div>
 
-                                <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100">
-                                    <h5 className="font-black text-slate-800 mb-3">2. Video Statement</h5>
-                                    <p className="text-xs text-muted mb-6 font-medium italic">
-                                        Record yourself saying: "म मेरो ऋणको सबै नियम र सर्तहरू स्वीकार गर्दछु र समयमै चुक्ता गर्ने वाचा गर्दछु।"
-                                    </p>
-                                    <label className="upload-tile upload-tile-lg block w-full text-center py-8 rounded-2xl transition-all cursor-pointer group">
-                                        <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:bg-primary group-hover:text-white transition-all">
-                                            <Video size={24} />
+                            {/* Video Statement Section */}
+                            <div className="p-8 rounded-3xl bg-gradient-to-br from-amber-50 to-amber-100/50 border-2 border-amber-200 mb-12">
+                                <div className="flex items-start gap-4 mb-4">
+                                    <div className="w-10 h-10 rounded-full bg-amber-600 text-white flex items-center justify-center font-black text-lg flex-shrink-0">2</div>
+                                    <div className="flex-1">
+                                        <h5 className="font-black text-slate-900 text-base mb-2">Video Statement</h5>
+                                        <div className="bg-white/80 backdrop-blur p-4 rounded-xl border border-amber-200 mb-4">
+                                            <p className="text-xs font-bold text-slate-600 mb-2">Please record yourself saying:</p>
+                                            <p className="text-sm font-medium text-slate-900 italic leading-relaxed">
+                                                "म मेरो ऋणको सबै नियम र सर्तहरू स्वीकार गर्दछु र समयमै चुक्ता गर्ने वाचा गर्दछु।"
+                                            </p>
                                         </div>
-                                        <span className="text-xs font-black uppercase text-slate-500">Record / Upload Video</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="ml-14">
+                                    <label className="block">
+                                        <div className="upload-tile upload-tile-lg w-full text-center py-10 rounded-2xl transition-all cursor-pointer group hover:scale-[1.02] active:scale-[0.98]">
+                                            <div className="w-16 h-16 rounded-full bg-white shadow-lg flex items-center justify-center mx-auto mb-4 group-hover:bg-amber-600 group-hover:text-white transition-all">
+                                                <Video size={32} />
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-700 block mb-1">Record or Upload Video</span>
+                                            <span className="text-xs text-slate-500">Click to select video file</span>
+                                            {formData.videoStatement && (
+                                                <div className="mt-4 px-4 py-2 bg-green-100 text-green-700 text-xs font-black uppercase tracking-tight rounded-full inline-block">
+                                                    ✓ Statement Saved
+                                                </div>
+                                            )}
+                                        </div>
                                         <input type="file" name="videoStatement" onChange={handleFile} accept="video/*" className="hidden" />
-                                        {formData.videoStatement && <div className="text-success text-[10px] mt-2 font-black uppercase tracking-tight">Statement Saved ✓</div>}
                                     </label>
                                 </div>
                             </div>
 
                             <div className="flex gap-6">
-                                <button type="button" onClick={() => setStep(1)} className="btn btn-outline flex-1 py-5" disabled={loading}>Previous</button>
-                                <button type="submit" className="btn btn-primary flex-[2] py-5 shadow-xl shadow-blue-500/20" disabled={loading}>
+                                <button type="button" onClick={() => setStep(1)} className="btn btn-outline flex-1 py-5" disabled={loading}>
+                                    Previous
+                                </button>
+                                <button type="submit" className="btn btn-primary flex-[2] py-5 shadow-xl shadow-blue-500/20 font-black" disabled={loading}>
                                     {loading ? 'Submitting Application...' : 'Submit Loan Application'}
                                 </button>
                             </div>

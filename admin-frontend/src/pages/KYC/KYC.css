@@ -395,3 +395,89 @@
   background: #fed7d7;
   color: #742a2a;
 }
+
+/* Blockchain Styles */
+.btn-blockchain {
+  background: #667eea;
+  color: white;
+}
+
+.btn-verify {
+  background: #48bb78;
+  color: white;
+}
+
+.btn-certificate {
+  background: #ed8936;
+  color: white;
+}
+
+.blockchain-status {
+  margin-top: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+}
+
+.blockchain-header {
+  margin-bottom: 12px;
+}
+
+.blockchain-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.blockchain-badge.stored {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+}
+
+.blockchain-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tx-hash {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.tx-hash span {
+  font-weight: 600;
+  opacity: 0.9;
+  min-width: 45px;
+}
+
+.tx-hash code {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: white;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.kyc-success {
+  background: #c6f6d5;
+  color: #22543d;
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+}
+

@@ -329,6 +329,43 @@ def _normalize_month(raw: str) -> str:
     return raw.upper()
 
 
+def _month_to_number(month_str: str) -> str:
+    """Convert month abbreviation (JAN, FEB, etc.) to numeric format (01, 02, etc.)."""
+    month_str_upper = month_str.strip().upper()
+    month_number_map = {
+        "JAN": "01", "JANUARY": "01",
+        "FEB": "02", "FEBRUARY": "02",
+        "MAR": "03", "MARCH": "03",
+        "APR": "04", "APRIL": "04",
+        "MAY": "05",
+        "JUN": "06", "JUNE": "06",
+        "JUL": "07", "JULY": "07",
+        "AUG": "08", "AUGUST": "08",
+        "SEP": "09", "SEPTEMBER": "09",
+        "OCT": "10", "OCTOBER": "10",
+        "NOV": "11", "NOVEMBER": "11",
+        "DEC": "12", "DECEMBER": "12",
+    }
+    
+    # If already numeric, ensure 2-digit format
+    if month_str.isdigit():
+        num = int(month_str)
+        if 1 <= num <= 12:
+            return f"{num:02d}"
+    
+    # Try direct lookup
+    if month_str_upper in month_number_map:
+        return month_number_map[month_str_upper]
+    
+    # Try prefix match for partial month names
+    for month_name, month_num in month_number_map.items():
+        if month_str_upper.startswith(month_name[:3]):
+            return month_num
+    
+    # Return original if can't convert
+    return month_str
+
+
 # ============================================================ extractor ===
 
 class SemanticExtractor:
@@ -866,6 +903,15 @@ class SemanticExtractor:
                 yr = dob_dict.get("year", "????")
                 mo = dob_dict.get("month", "??")
                 dy = dob_dict.get("day", "??")
+                
+                # Convert month abbreviation to numeric format (JAN -> 01, FEB -> 02, etc.)
+                if mo and mo != "??":
+                    mo = _month_to_number(mo)
+                
+                # Ensure day is 2-digit format
+                if dy and dy != "??" and dy.isdigit():
+                    dy = f"{int(dy):02d}"
+                
                 fields["date_of_birth"] = f"{yr}-{mo}-{dy}"
                 fields["date_of_birth_parts"] = dob_dict
                 confidences["date_of_birth"] = anchors["dob"].match_score / 100.0

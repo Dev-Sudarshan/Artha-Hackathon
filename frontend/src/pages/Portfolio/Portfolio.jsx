@@ -83,6 +83,25 @@ const Portfolio = () => {
         }
     };
 
+    const handleDeleteLoan = async (loanId) => {
+        if (!window.confirm('Are you sure you want to delete this loan request? This action cannot be undone.')) {
+            return;
+        }
+        
+        setLoading(true);
+        try {
+            await loanService.deleteLoan(loanId);
+            alert("Loan request deleted successfully!");
+            // Refresh data
+            const newData = await loanService.getUserPortfolio();
+            setPortfolioData(newData);
+        } catch (error) {
+            alert("Failed to delete loan: " + (error.response?.data?.detail || error.message));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="container mt-8 mb-16 animate-fade">
             <div className="portfolio-header mb-12 flex justify-between items-end">
@@ -141,27 +160,33 @@ const Portfolio = () => {
 
             {activeView === 'borrower' && (
                 <div className="borrower-dash animate-slide-up">
-                    {/* Handle LISTED vs ACTIVE states */}
-                    {activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'AWAITING_SIGNATURE' ? (
+                    {/* Handle PENDING_VERIFICATION, PENDING_ADMIN_APPROVAL, LISTED vs ACTIVE states */}
+                    {activeLoan.status === 'PENDING_VERIFICATION' || activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'AWAITING_SIGNATURE' ? (
                         <div className="card glass p-16 text-center shadow-premium mb-12" style={{ borderRadius: 'var(--radius-xl)' }}>
                             <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-8 animate-pulse">
                                 <Calendar size={48} className="text-primary" />
                             </div>
                             <h2 className="text-3xl font-black text-slate-900 mb-4">
-                                {activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? 'Loan Request Pending Admin Approval' : 'Loan Application Listed'}
+                                {activeLoan.status === 'PENDING_VERIFICATION' 
+                                    ? 'AI Verification in Progress' 
+                                    : activeLoan.status === 'PENDING_ADMIN_APPROVAL' 
+                                        ? 'Loan Request Pending Admin Approval' 
+                                        : 'Loan Application Listed'}
                             </h2>
                             <p className="text-muted text-lg max-w-xl mx-auto mb-10">
-                                {activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? (
+                                {activeLoan.status === 'PENDING_VERIFICATION' ? (
+                                    <>Your loan request for <strong>"{activeLoan.purpose}"</strong> has been submitted and is currently being verified by our AI system. Please wait while we process your video and documents.</>
+                                ) : activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? (
                                     <>Your loan request for <strong>"{activeLoan.purpose}"</strong> has been submitted and is awaiting admin approval before it goes live on the Marketplace.</>
                                 ) : (
                                     <>Your loan request used for <strong>"{activeLoan.purpose}"</strong> has been verified and is now live on the Marketplace.</>
                                 )}
                                 <br /><br />
                                 <span className="font-bold text-primary">
-                                    Status: {activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? 'Pending Admin Approval' : 'Awaiting Lender Funding'}
+                                    Status: {activeLoan.status === 'PENDING_VERIFICATION' ? 'AI Verification in Progress' : activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? 'Pending Admin Approval' : 'Awaiting Lender Funding'}
                                 </span>
                             </p>
-                            <div className="inline-flex gap-8 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                            <div className="inline-flex gap-8 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm mb-8">
                                 <div className="text-center px-4 border-r border-slate-100">
                                     <p className="text-xs font-black uppercase text-slate-400 tracking-widest mb-1">Amount</p>
                                     <p className="text-xl font-black text-slate-800">NPR {activeLoan.amount.toLocaleString()}</p>
@@ -171,6 +196,17 @@ const Portfolio = () => {
                                     <p className="text-xl font-black text-slate-800">{activeLoan.tenure} Months</p>
                                 </div>
                             </div>
+                            {/* Delete Button for Pending/Listed/Draft Loans */}
+                            {(activeLoan.status === 'PENDING_VERIFICATION' || activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'DRAFT') && (
+                                <button 
+                                    onClick={() => handleDeleteLoan(activeLoan.id)}
+                                    disabled={loading}
+                                    className="btn text-red-600 border-2 border-red-300 hover:bg-red-50 hover:border-red-400 px-8 py-3 rounded-xl font-bold transition-all shadow-sm"
+                                    style={{ marginTop: '8px', background: 'white' }}
+                                >
+                                    {loading ? 'Deleting...' : '🗑️ Cancel Loan Request'}
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <>

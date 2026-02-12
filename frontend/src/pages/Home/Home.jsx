@@ -38,8 +38,8 @@ const Home = () => {
                             </div>
                             <h2 className="text-2xl font-black text-slate-900 mb-4">Request Submitted!</h2>
                             <p className="text-slate-600 leading-relaxed mb-8">
-                                Your loan request is currently being processed by our AI verification system.
-                                Once verified, it will be automatically published to the marketplace.
+                                Your loan request is being verified by our AI system and will be reviewed by our admin team.
+                                Once approved, it will be published to the marketplace for lenders.
                             </p>
                             <button
                                 onClick={() => setShowPopup(false)}

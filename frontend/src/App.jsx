@@ -17,6 +17,7 @@ const KYC = lazy(() => import('./pages/KYC/KYC'));
 const LoanRequest = lazy(() => import('./pages/LoanRequest/LoanRequest'));
 const Payment = lazy(() => import('./pages/Payment/Payment'));
 const DevKycCheck = lazy(() => import('./pages/DevKycCheck/DevKycCheck'));
+const KycTest = lazy(() => import('./pages/KycTest/KycTest'));
 
 const PageLoader = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
@@ -44,6 +45,7 @@ function App() {
                 <Route path="/request-loan" element={<LoanRequest />} />
                 <Route path="/payment" element={<Payment />} />
                 <Route path="/dev-kyc-check" element={<DevKycCheck />} />
+                <Route path="/kyc-test" element={<KycTest />} />
               </Routes>
             </Suspense>
           </div>
