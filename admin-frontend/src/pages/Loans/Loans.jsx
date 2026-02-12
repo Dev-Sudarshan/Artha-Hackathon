@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { approveLoan, getLoans, rejectLoan, storeOnBlockchain, verifyOnBlockchain, markRepaidOnBlockchain } from '../../services/adminApi';
+import { approveLoan, getLoans, rejectLoan } from '../../services/adminApi';
 import './Loans.css';
 
 // Backend URL for serving static files (PDFs, videos, etc.)
@@ -10,8 +10,6 @@ const Loans = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
-  const [blockchainLoading, setBlockchainLoading] = useState({});
-  const [blockchainSuccess, setBlockchainSuccess] = useState('');
 
   useEffect(() => {
     loadLoans();
@@ -59,53 +57,7 @@ const Loans = () => {
     }
   };
 
-  const handleStoreBlockchain = async (loanId) => {
-    setBlockchainLoading((prev) => ({ ...prev, [loanId]: true }));
-    setActionError('');
-    setBlockchainSuccess('');
-    try {
-      const result = await storeOnBlockchain(loanId);
-      setBlockchainSuccess(`Stored on blockchain. TX: ${result.txid?.substring(0, 16)}...`);
-      await loadLoans();
-    } catch (err) {
-      setActionError(err?.response?.data?.detail || err?.message || 'Blockchain store failed');
-    } finally {
-      setBlockchainLoading((prev) => ({ ...prev, [loanId]: false }));
-    }
-  };
 
-  const handleVerifyBlockchain = async (loanId) => {
-    setBlockchainLoading((prev) => ({ ...prev, [loanId]: true }));
-    setActionError('');
-    setBlockchainSuccess('');
-    try {
-      const result = await verifyOnBlockchain(loanId);
-      if (result.verified) {
-        setBlockchainSuccess('Verified. Data integrity confirmed.');
-      } else {
-        setActionError('Verification failed: Data mismatch detected.');
-      }
-    } catch (err) {
-      setActionError(err?.response?.data?.detail || err?.message || 'Blockchain verify failed');
-    } finally {
-      setBlockchainLoading((prev) => ({ ...prev, [loanId]: false }));
-    }
-  };
-
-  const handleMarkRepaidOnBlockchain = async (loanId) => {
-    setBlockchainLoading((prev) => ({ ...prev, [loanId]: true }));
-    setActionError('');
-    setBlockchainSuccess('');
-    try {
-      const result = await markRepaidOnBlockchain(loanId);
-      setBlockchainSuccess(`Marked as repaid on blockchain. TX: ${result.txid?.substring(0, 16)}...`);
-      await loadLoans();
-    } catch (err) {
-      setActionError(err?.response?.data?.detail || err?.message || 'Mark repaid failed');
-    } finally {
-      setBlockchainLoading((prev) => ({ ...prev, [loanId]: false }));
-    }
-  };
 
   if (loading) return <div className="loading">Loading loans...</div>;
 
@@ -124,13 +76,12 @@ const Loans = () => {
       </div>
 
       {actionError ? <div className="loans-error">{actionError}</div> : null}
-      {blockchainSuccess ? <div className="loans-success">{blockchainSuccess}</div> : null}
 
       <div className="loans-list">
         {completedLoans.map((l) => {
           const statusText = String(l.status || '').trim();
           const isPending = statusText.toUpperCase() === 'PENDING_ADMIN_APPROVAL';
-          const isListedOrActive = ['LISTED', 'ACTIVE', 'AWAITING_SIGNATURE', 'REPAID'].includes(statusText.toUpperCase());
+          const isVerifying = statusText.toUpperCase() === 'PENDING_VERIFICATION';
           const isStoredOnChain = l.blockchain_tx_hash != null;
           const isRepaidOnChain = l.blockchain_repayment_tx_hash != null;
           
@@ -148,26 +99,6 @@ const Loans = () => {
                 
                 {/* Document Links */}
                 <div className="loan-documents" style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {l.agreement_pdf_unsigned && (
-                    <a 
-                      href={`${BACKEND_BASE_URL}${l.agreement_pdf_unsigned}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="doc-link"
-                      style={{ 
-                        padding: '6px 12px', 
-                        background: '#EFF6FF', 
-                        color: '#2563EB', 
-                        borderRadius: '6px', 
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        textDecoration: 'none',
-                        display: 'inline-block'
-                      }}
-                    >
-                      📄 View Unsigned PDF
-                    </a>
-                  )}
                   {l.agreement_pdf_signed && (
                     <a 
                       href={`${BACKEND_BASE_URL}${l.agreement_pdf_signed}`} 
@@ -208,7 +139,7 @@ const Loans = () => {
                       🎥 View Video
                     </a>
                   )}
-                  {!l.agreement_pdf_unsigned && !l.agreement_pdf_signed && !l.video_verification_ref && (
+                  {!l.agreement_pdf_signed && !l.video_verification_ref && (
                     <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>No documents uploaded</span>
                   )}
                 </div>
@@ -234,57 +165,209 @@ const Loans = () => {
                     </div>
                   </div>
                 )}
+
+                {/* AI Suggestion Badge */}
+                {l.ai_suggestion && (
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '12px 16px', 
+                    background: l.ai_suggestion === 'APPROVE' ? '#DCFCE7' : l.ai_suggestion === 'REJECT' ? '#FEE2E2' : '#FEF3C7',
+                    borderRadius: '10px',
+                    border: `2px solid ${l.ai_suggestion === 'APPROVE' ? '#16A34A' : l.ai_suggestion === 'REJECT' ? '#DC2626' : '#F59E0B'}`,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                      <span style={{ 
+                        fontWeight: '800', 
+                        fontSize: '13px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        color: l.ai_suggestion === 'APPROVE' ? '#16A34A' : l.ai_suggestion === 'REJECT' ? '#DC2626' : '#F59E0B'
+                      }}>
+                        🤖 AI Suggests: {l.ai_suggestion}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+                      {l.video_verification_result?.face_match ? '✅ Image matches' : l.video_verification_result?.face_match === false ? '❌ Image does not match' : l.ai_suggestion_reason || 'Requires manual review'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Verification Status or Results */}
+                {isVerifying && !l.video_verification_result && (
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '12px', 
+                    background: '#F0F9FF',
+                    borderRadius: '8px',
+                    border: '1px solid #3B82F6'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ 
+                        width: '16px', 
+                        height: '16px', 
+                        border: '2px solid #3B82F6', 
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      <span style={{ 
+                        fontWeight: '700', 
+                        fontSize: '12px',
+                        color: '#3B82F6'
+                      }}>
+                        AI Verification in Progress...
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Face Verification Results with Photo Comparison */}
+                {l.video_verification_result && (
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '14px', 
+                    background: l.video_verification_result.face_match ? '#F0FDF4' : '#FEF2F2',
+                    borderRadius: '10px',
+                    border: `2px solid ${l.video_verification_result.face_match ? '#16A34A' : '#DC2626'}`
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <span style={{ 
+                        fontWeight: '800', 
+                        fontSize: '12px',
+                        textTransform: 'uppercase',
+                        color: l.video_verification_result.face_match ? '#16A34A' : '#DC2626'
+                      }}>
+                        {l.video_verification_result.face_match ? '✅ Face Matched' : '❌ Face Mismatch'}
+                      </span>
+                      {l.video_verification_result.face_distance && (
+                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>
+                          Score: {(1 - l.video_verification_result.face_distance).toFixed(3)}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Photo Comparison */}
+                    {l.kyc_selfie_ref && (
+                      <div>
+                        <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '8px', fontWeight: '700', textTransform: 'uppercase' }}>
+                          Photo Comparison:
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: 'white', padding: '12px', borderRadius: '8px' }}>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', fontWeight: '600' }}>KYC Live Photo</div>
+                            <img 
+                              src={`${BACKEND_BASE_URL}${l.kyc_selfie_ref}`} 
+                              alt="KYC Selfie" 
+                              style={{ 
+                                width: '80px', 
+                                height: '80px', 
+                                objectFit: 'cover', 
+                                borderRadius: '8px', 
+                                border: '3px solid #3B82F6',
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                              }}
+                            />
+                          </div>
+                          <div style={{ fontSize: '20px', color: '#94a3b8', fontWeight: 'bold' }}>⟷</div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', fontWeight: '600' }}>Video Extracted Frame</div>
+                            {l.video_frame_ref ? (
+                              <img 
+                                src={`${BACKEND_BASE_URL}${l.video_frame_ref}`}
+                                alt="Video Frame"
+                                style={{ 
+                                  width: '80px', 
+                                  height: '80px', 
+                                  objectFit: 'cover', 
+                                  borderRadius: '8px', 
+                                  border: '3px solid #F59E0B',
+                                  boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                                }}
+                              />
+                            ) : (
+                              <div style={{ 
+                                width: '80px', 
+                                height: '80px', 
+                                background: '#F3F4F6',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '10px',
+                                color: '#9CA3AF'
+                              }}>No Frame</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="loan-actions">
-                <button className="btn btn-primary" disabled={!isPending || actionLoading} onClick={() => handleApprove(l.loan_id)}>
-                  {actionLoading ? 'Working…' : 'Approve'}
-                </button>
-                <button className="btn btn-secondary" disabled={!isPending || actionLoading} onClick={() => handleReject(l.loan_id)}>
-                  {actionLoading ? 'Working…' : 'Reject'}
-                </button>
-
-                {isListedOrActive && !isStoredOnChain && (
-                  <button 
-                    className="btn btn-blockchain" 
-                    disabled={blockchainLoading[l.loan_id]} 
-                    onClick={() => handleStoreBlockchain(l.loan_id)}
-                    title="Store loan data on blockchain"
-                  >
-                    {blockchainLoading[l.loan_id] ? 'Working...' : 'Store on Chain'}
-                  </button>
-                )}
-
-                {isStoredOnChain && (
+                {isPending ? (
                   <>
-                    <button 
-                      className="btn btn-verify" 
-                      disabled={blockchainLoading[l.loan_id]} 
-                      onClick={() => handleVerifyBlockchain(l.loan_id)}
-                      title="Verify data integrity with blockchain"
-                    >
-                      {blockchainLoading[l.loan_id] ? 'Working...' : 'Verify'}
+                    <button className="btn btn-primary" disabled={actionLoading} onClick={() => handleApprove(l.loan_id)}>
+                      {actionLoading ? 'Working…' : 'Approve'}
                     </button>
-
-                    <button 
-                      className="btn btn-certificate" 
-                      onClick={() => window.open(`http://localhost:8000/api/blockchain/certificate/${l.loan_id}`, '_blank')}
-                      title="Download blockchain certificate PDF"
-                    >
-                      Certificate
+                    <button className="btn btn-secondary" disabled={actionLoading} onClick={() => handleReject(l.loan_id)}>
+                      {actionLoading ? 'Working…' : 'Reject'}
                     </button>
-                    
-                    {!isRepaidOnChain && (
-                      <button 
-                        className="btn btn-repaid" 
-                        disabled={blockchainLoading[l.loan_id]} 
-                        onClick={() => handleMarkRepaidOnBlockchain(l.loan_id)}
-                        title="Mark loan as repaid on blockchain"
-                      >
-                        {blockchainLoading[l.loan_id] ? 'Working...' : 'Mark Repaid'}
-                      </button>
-                    )}
                   </>
+                ) : isVerifying ? (
+                  <div style={{ 
+                    padding: '12px 20px',
+                    fontSize: '13px', 
+                    color: '#3B82F6', 
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    background: '#F0F9FF',
+                    borderRadius: '10px',
+                    border: '2px solid #3B82F6'
+                  }}>
+                    🔄 AI Verification in Progress...
+                  </div>
+                ) : statusText.toUpperCase() === 'LISTED' ? (
+                  <div style={{ 
+                    padding: '12px 20px',
+                    fontSize: '14px', 
+                    color: '#16A34A', 
+                    fontWeight: '700',
+                    textAlign: 'center',
+                    background: '#DCFCE7',
+                    borderRadius: '10px',
+                    border: '2px solid #16A34A'
+                  }}>
+                    ✅ Approved
+                  </div>
+                ) : statusText.toUpperCase() === 'REJECTED' ? (
+                  <div style={{ 
+                    padding: '12px 20px',
+                    fontSize: '14px', 
+                    color: '#DC2626', 
+                    fontWeight: '700',
+                    textAlign: 'center',
+                    background: '#FEE2E2',
+                    borderRadius: '10px',
+                    border: '2px solid #DC2626'
+                  }}>
+                    ❌ Rejected
+                  </div>
+                ) : (
+                  <div style={{ 
+                    padding: '12px 20px',
+                    fontSize: '13px', 
+                    color: '#64748b', 
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    background: '#F8FAFC',
+                    borderRadius: '10px',
+                    border: '2px solid #E2E8F0'
+                  }}>
+                    {statusText}
+                  </div>
                 )}
               </div>
             </div>

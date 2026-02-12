@@ -85,3 +85,70 @@ async def dev_face_match(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/kyc-validation")
+async def dev_kyc_validation(
+    front_image: UploadFile = File(...),
+    back_image: UploadFile = File(...),
+    full_name: str = Form(...),
+    date_of_birth: str = Form(...),
+    citizenship_no: str = Form(...),
+):
+    """Test endpoint to validate KYC data by running the pipeline on citizenship images."""
+    try:
+        print(f"[KYC-Validation] Received request for: {full_name}")
+        front_path = _save_upload(front_image)
+        back_path = _save_upload(back_image)
+        print(f"[KYC-Validation] Images saved: front={front_path}, back={back_path}")
+
+        # Use the same working logic as /dev/ocr endpoint
+        print("[KYC-Validation] Running OCR verification...")
+        verify_result = verify_citizenship_card(
+            image_path=back_path,
+            input_full_name=full_name,
+            input_dob=date_of_birth,
+            input_citizenship_no=citizenship_no,
+        )
+        print(f"[KYC-Validation] OCR completed. Status: {verify_result.get('final_ocr_status')}")
+
+        if verify_result.get("error"):
+            return {
+                "success": False,
+                "match": False,
+                "error": verify_result["error"],
+                "message": "OCR extraction failed"
+            }
+
+        # Extract results
+        extracted_fields = verify_result.get("extracted_fields", {})
+        all_match = verify_result.get("final_ocr_status") == "PASSED"
+
+        return {
+            "success": True,
+            "match": all_match,
+            "extracted_data": {
+                "full_name": extracted_fields.get("full_name", ""),
+                "date_of_birth": extracted_fields.get("date_of_birth", ""),
+                "citizenship_no": extracted_fields.get("citizenship_certificate_number", ""),
+            },
+            "provided_data": {
+                "full_name": full_name,
+                "date_of_birth": date_of_birth,
+                "citizenship_no": citizenship_no,
+            },
+            "field_matches": {
+                "name_match": verify_result.get("name_match", False),
+                "dob_match": verify_result.get("dob_match", False),
+                "citizenship_match": verify_result.get("citizenship_no_match", False),
+            },
+            "field_confidences": verify_result.get("confidence", {}),
+            "validation_issues": verify_result.get("validation_issues", []),
+            "flags_for_review": [],
+            "raw_text": verify_result.get("raw_text", ""),
+        }
+    except Exception as e:
+        print(f"[KYC-Validation] ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))

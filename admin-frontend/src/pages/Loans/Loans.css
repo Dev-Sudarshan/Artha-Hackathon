@@ -2,6 +2,12 @@
   padding: 24px;
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .loans-header {
   display: flex;
   align-items: baseline;
@@ -114,3 +120,66 @@
   color: #1a202c;
   border: 1px solid #e5e7eb;
 }
+
+/* Blockchain Status Display */
+.blockchain-status {
+  margin-top: 12px;
+  padding: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  color: white;
+}
+
+.blockchain-header {
+  margin-bottom: 8px;
+}
+
+.blockchain-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.blockchain-badge.stored {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+}
+
+.blockchain-badge.repaid {
+  background: rgba(72, 187, 120, 0.9);
+  color: white;
+}
+
+.blockchain-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tx-hash {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.tx-hash span {
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.tx-hash code {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: white;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

@@ -160,24 +160,30 @@ const Portfolio = () => {
 
             {activeView === 'borrower' && (
                 <div className="borrower-dash animate-slide-up">
-                    {/* Handle LISTED vs ACTIVE states */}
-                    {activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'AWAITING_SIGNATURE' ? (
+                    {/* Handle PENDING_VERIFICATION, PENDING_ADMIN_APPROVAL, LISTED vs ACTIVE states */}
+                    {activeLoan.status === 'PENDING_VERIFICATION' || activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'AWAITING_SIGNATURE' ? (
                         <div className="card glass p-16 text-center shadow-premium mb-12" style={{ borderRadius: 'var(--radius-xl)' }}>
                             <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-8 animate-pulse">
                                 <Calendar size={48} className="text-primary" />
                             </div>
                             <h2 className="text-3xl font-black text-slate-900 mb-4">
-                                {activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? 'Loan Request Pending Admin Approval' : 'Loan Application Listed'}
+                                {activeLoan.status === 'PENDING_VERIFICATION' 
+                                    ? 'AI Verification in Progress' 
+                                    : activeLoan.status === 'PENDING_ADMIN_APPROVAL' 
+                                        ? 'Loan Request Pending Admin Approval' 
+                                        : 'Loan Application Listed'}
                             </h2>
                             <p className="text-muted text-lg max-w-xl mx-auto mb-10">
-                                {activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? (
+                                {activeLoan.status === 'PENDING_VERIFICATION' ? (
+                                    <>Your loan request for <strong>"{activeLoan.purpose}"</strong> has been submitted and is currently being verified by our AI system. Please wait while we process your video and documents.</>
+                                ) : activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? (
                                     <>Your loan request for <strong>"{activeLoan.purpose}"</strong> has been submitted and is awaiting admin approval before it goes live on the Marketplace.</>
                                 ) : (
                                     <>Your loan request used for <strong>"{activeLoan.purpose}"</strong> has been verified and is now live on the Marketplace.</>
                                 )}
                                 <br /><br />
                                 <span className="font-bold text-primary">
-                                    Status: {activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? 'Pending Admin Approval' : 'Awaiting Lender Funding'}
+                                    Status: {activeLoan.status === 'PENDING_VERIFICATION' ? 'AI Verification in Progress' : activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? 'Pending Admin Approval' : 'Awaiting Lender Funding'}
                                 </span>
                             </p>
                             <div className="inline-flex gap-8 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm mb-8">
@@ -191,7 +197,7 @@ const Portfolio = () => {
                                 </div>
                             </div>
                             {/* Delete Button for Pending/Listed/Draft Loans */}
-                            {(activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'DRAFT') && (
+                            {(activeLoan.status === 'PENDING_VERIFICATION' || activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'DRAFT') && (
                                 <button 
                                     onClick={() => handleDeleteLoan(activeLoan.id)}
                                     disabled={loading}

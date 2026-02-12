@@ -106,10 +106,16 @@ def face_match(video_frame_path: str, photo_path: str) -> tuple[bool, float]:
 def verify_video_identity(
     video_path: str,
     reference_photo_path: str,
+    save_frame_to: str = None
 ) -> dict:
     """
     Video identity verification - Face matching only
     Compares video frames against a live reference photo
+    
+    Args:
+        video_path: Path to video file
+        reference_photo_path: Path to reference photo (KYC selfie)
+        save_frame_to: Optional path to save the extracted frame for display
     """
     print("="*40)
     print("STARTING VIDEO VERIFICATION (FACE ONLY)")
@@ -122,6 +128,7 @@ def verify_video_identity(
     face_verified = False
     best_face_distance = None
     matched_frame = None
+    matched_frame_path = None
     
     for frame in frames:
         match_result, distance = face_match(frame, reference_photo_path)
@@ -134,8 +141,25 @@ def verify_video_identity(
         if match_result:
             face_verified = True
             matched_frame = os.path.basename(frame)
+            matched_frame_path = frame
             print(f"[DEBUG] Face verified on frame {matched_frame}!")
             break
+    
+    # Save frame if requested (use first frame if no match found)
+    saved_frame_ref = None
+    if save_frame_to:
+        frame_to_save = matched_frame_path if matched_frame_path else (frames[0] if frames else None)
+        if frame_to_save:
+            try:
+                import shutil
+                os.makedirs(os.path.dirname(save_frame_to), exist_ok=True)
+                shutil.copy2(frame_to_save, save_frame_to)
+                # Return relative path from static directory
+                if 'static' in save_frame_to:
+                    saved_frame_ref = '/static' + save_frame_to.split('static', 1)[1].replace('\\', '/')
+                print(f"[DEBUG] Saved frame to: {save_frame_to}")
+            except Exception as e:
+                print(f"[DEBUG] Failed to save frame: {e}")
     
     if not face_verified:
         print("\n[RESULT] Face verification FAILED")
@@ -149,6 +173,7 @@ def verify_video_identity(
         "face_match": face_verified,
         "face_distance": best_face_distance,
         "matched_frame": matched_frame,
+        "saved_frame_ref": saved_frame_ref,
         "final_status": final_status,
         "reason": reason,
     }

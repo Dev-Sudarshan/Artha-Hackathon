@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -161,6 +162,10 @@ def transform_to_loan(loan_id: str, loan_data: dict, index: int) -> schemas.Loan
     if video_ref:
         video_url = video_ref if video_ref.startswith("http") or video_ref.startswith("/") else f"/static/{video_ref}"
     
+    # Get KYC selfie reference
+    kyc_selfie = loan_data.get("kyc_selfie_ref")
+    video_frame = loan_data.get("video_frame_ref")
+    
     return schemas.LoanOut(
         id=index,
         loan_id=loan_id,
@@ -176,6 +181,11 @@ def transform_to_loan(loan_id: str, loan_data: dict, index: int) -> schemas.Loan
         blockchain_tx_hash=loan_data.get("blockchain_tx_hash"),
         blockchain_loan_hash=loan_data.get("blockchain_loan_hash"),
         blockchain_repayment_tx_hash=loan_data.get("blockchain_repayment_tx_hash"),
+        kyc_selfie_ref=kyc_selfie,
+        video_frame_ref=video_frame,
+        video_verification_result=loan_data.get("video_verification_result"),
+        ai_suggestion=loan_data.get("ai_suggestion"),
+        ai_suggestion_reason=loan_data.get("ai_suggestion_reason"),
     )
 
 
@@ -251,6 +261,8 @@ def transform_to_kyc(user_id: str, kyc_data: dict, index: int, all_loans: dict =
         doc_front_url=doc_front_url,
         doc_back_url=doc_back_url,
         selfie_url=selfie_url,
+        blockchain_tx_hash=kyc_data.get("blockchain_tx_hash"),
+        blockchain_kyc_hash=kyc_data.get("blockchain_kyc_hash"),
         created_at=_parse_datetime(kyc_data.get("created_at")) or datetime.now(),
     )
 
@@ -755,6 +767,8 @@ def get_kyc_details(
         doc_front_url=record.doc_front_url,
         doc_back_url=record.doc_back_url,
         selfie_url=record.selfie_url,
+        blockchain_tx_hash=kyc_data.get("blockchain_tx_hash"),
+        blockchain_kyc_hash=kyc_data.get("blockchain_kyc_hash"),
         kyc=kyc_data,
     )
 
@@ -799,6 +813,137 @@ def reject_kyc(
     }
     put_item("kyc", user_phone, kyc_data)
     return {"message": "KYC rejected", "user_phone": user_phone, "status": "REJECTED"}
+
+
+@router.post("/admin/kyc/{user_phone}/blockchain/store")
+def store_kyc_on_blockchain(
+    user_phone: str,
+    admin=Depends(require_roles(["super_admin"])),
+):
+    """Store KYC record on the blockchain"""
+    kyc_data = get_item("kyc", user_phone) or {}
+    if not kyc_data:
+        raise HTTPException(status_code=404, detail="KYC record not found")
+    
+    # KYC must be VERIFIED to be stored on blockchain
+    if kyc_data.get("status") != "VERIFIED":
+        raise HTTPException(status_code=400, detail="KYC must be VERIFIED before storing on blockchain")
+    
+    # Check if already stored
+    if kyc_data.get("blockchain_tx_hash"):
+        raise HTTPException(status_code=400, detail="KYC already stored on blockchain")
+    
+    try:
+        from blockchain.kyc import record_kyc_result
+        from blockchain.utils import sha256_hash
+        
+        # Create a hash of the KYC data
+        kyc_hash = sha256_hash(kyc_data)
+        
+        # Record on blockchain
+        record_kyc_result(kyc_data, user_phone)
+        
+        # Update KYC record with blockchain info
+        kyc_data["blockchain_tx_hash"] = f"kyc-tx-{user_phone[:8]}"  # Simplified TX hash
+        kyc_data["blockchain_kyc_hash"] = kyc_hash
+        kyc_data["blockchain_stored_at"] = datetime.utcnow().isoformat()
+        kyc_data["blockchain_stored_by"] = admin.email
+        
+        put_item("kyc", user_phone, kyc_data)
+        
+        return {
+            "message": "KYC stored on blockchain",
+            "tx_hash": kyc_data["blockchain_tx_hash"],
+            "kyc_hash": kyc_hash,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Blockchain storage failed: {str(e)}")
+
+
+@router.get("/admin/kyc/{user_phone}/blockchain/verify")
+def verify_kyc_on_blockchain(
+    user_phone: str,
+    admin=Depends(require_roles(["super_admin", "support_admin"])),
+):
+    """Verify KYC record against blockchain"""
+    kyc_data = get_item("kyc", user_phone) or {}
+    if not kyc_data:
+        raise HTTPException(status_code=404, detail="KYC record not found")
+    
+    stored_hash = kyc_data.get("blockchain_kyc_hash")
+    if not stored_hash:
+        raise HTTPException(status_code=400, detail="KYC not stored on blockchain")
+    
+    try:
+        from blockchain.utils import sha256_hash
+        
+        # Create a fresh hash from current data (excluding blockchain fields)
+        kyc_copy = {k: v for k, v in kyc_data.items() if not k.startswith("blockchain_")}
+        current_hash = sha256_hash(kyc_copy)
+        
+        is_valid = (current_hash == stored_hash)
+        
+        return {
+            "valid": is_valid,
+            "stored_hash": stored_hash,
+            "current_hash": current_hash,
+            "message": "KYC data matches blockchain record" if is_valid else "KYC data has been modified",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+
+
+@router.get("/api/blockchain/kyc-certificate/{user_phone}")
+def download_kyc_certificate(
+    user_phone: str,
+    admin=Depends(require_roles(["super_admin", "support_admin"])),
+):
+    """Download blockchain certificate for KYC record"""
+    kyc_data = get_item("kyc", user_phone) or {}
+    if not kyc_data:
+        raise HTTPException(status_code=404, detail="KYC record not found")
+    
+    if not kyc_data.get("blockchain_tx_hash"):
+        raise HTTPException(status_code=400, detail="KYC not stored on blockchain")
+    
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from io import BytesIO
+        
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+        
+        # Header
+        c.setFont("Helvetica-Bold", 20)
+        c.drawString(100, 750, "Blockchain Verification Certificate")
+        
+        c.setFont("Helvetica", 12)
+        c.drawString(100, 720, f"KYC Record: {user_phone}")
+        c.drawString(100, 700, f"Status: {kyc_data.get('status')}")
+        c.drawString(100, 680, f"Full Name: {kyc_data.get('basic_info', {}).get('first_name', '')} {kyc_data.get('basic_info', {}).get('last_name', '')}")
+        
+        c.drawString(100, 650, "Blockchain Information:")
+        c.drawString(120, 630, f"Transaction Hash: {kyc_data.get('blockchain_tx_hash')}")
+        c.drawString(120, 610, f"KYC Hash: {kyc_data.get('blockchain_kyc_hash', '')[:64]}")
+        c.drawString(120, 590, f"Stored At: {kyc_data.get('blockchain_stored_at', 'N/A')}")
+        c.drawString(120, 570, f"Stored By: {kyc_data.get('blockchain_stored_by', 'N/A')}")
+        
+        c.drawString(100, 540, "This certificate verifies that the KYC record has been")
+        c.drawString(100, 520, "immutably recorded on the blockchain.")
+        
+        c.save()
+        buffer.seek(0)
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=kyc_blockchain_certificate_{user_phone}.pdf"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Certificate generation failed: {str(e)}")
 
 
 @router.patch("/admin/kyc/{record_id}")

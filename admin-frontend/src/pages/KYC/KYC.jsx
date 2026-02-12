@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { approveKyc, getKycRecord, getKycRecords, rejectKyc } from '../../services/adminApi';
+import { approveKyc, getKycRecord, getKycRecords, rejectKyc, storeKycOnBlockchain, verifyKycOnBlockchain } from '../../services/adminApi';
 import './KYC.css';
 
 const KYC = () => {
@@ -9,17 +9,33 @@ const KYC = () => {
   const [selectedDetails, setSelectedDetails] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [blockchainLoading, setBlockchainLoading] = useState(false);
+  const [blockchainSuccess, setBlockchainSuccess] = useState('');
 
   useEffect(() => {
     loadKycRecords();
   }, []);
 
   const loadKycRecords = async () => {
+    setLoading(true);
     try {
+      setLoadError('');
       const data = await getKycRecords();
       setKycRecords(data.items || []);
     } catch (err) {
       console.error('Failed to load KYC records', err);
+      const errorMsg = err?.response?.data?.detail || err?.message || 'Failed to load KYC records. Please refresh the page.';
+      setLoadError(errorMsg);
+      
+      // If unauthorized, might need to redirect to login
+      if (err?.response?.status === 401) {
+        setLoadError('Session expired. Please log in again.');
+        // Optional: redirect to login after a delay
+        setTimeout(() => {
+          window.location.href = '/admin-login';
+        }, 2000);
+      }
     } finally {
       setLoading(false);
     }
@@ -33,6 +49,8 @@ const KYC = () => {
       setSelectedDetails(data);
     } catch (err) {
       console.error('Failed to load KYC details', err);
+      const errorMsg = err?.response?.data?.detail || err?.message || 'Failed to load details';
+      setActionError(errorMsg);
       setSelectedDetails(null);
     }
   };
@@ -98,6 +116,44 @@ const KYC = () => {
     }
   };
 
+  const handleStoreBlockchain = async () => {
+    if (!selectedPhone) return;
+    setBlockchainLoading(true);
+    setActionError('');
+    setBlockchainSuccess('');
+    try {
+      const result = await storeKycOnBlockchain(selectedPhone);
+      setBlockchainSuccess('KYC stored on blockchain successfully!');
+      await loadDetails(selectedPhone);
+      await loadKycRecords();
+    } catch (err) {
+      const message = err?.response?.data?.detail || err?.message || 'Blockchain storage failed';
+      setActionError(message);
+    } finally {
+      setBlockchainLoading(false);
+    }
+  };
+
+  const handleVerifyBlockchain = async () => {
+    if (!selectedPhone) return;
+    setBlockchainLoading(true);
+    setActionError('');
+    setBlockchainSuccess('');
+    try {
+      const result = await verifyKycOnBlockchain(selectedPhone);
+      if (result.valid) {
+        setBlockchainSuccess('✓ KYC data matches blockchain record');
+      } else {
+        setActionError('⚠ KYC data has been modified after blockchain storage');
+      }
+    } catch (err) {
+      const message = err?.response?.data?.detail || err?.message || 'Verification failed';
+      setActionError(message);
+    } finally {
+      setBlockchainLoading(false);
+    }
+  };
+
   const renderVerificationItem = (label, value, isMatch = null) => {
     return (
       <div className="verification-item">
@@ -114,6 +170,43 @@ const KYC = () => {
 
   if (loading) return <div className="loading">Loading KYC records...</div>;
 
+  if (loadError) {
+    return (
+      <div className="kyc-page">
+        <div className="kyc-header">
+          <h1>KYC Management</h1>
+        </div>
+        <div className="error-container" style={{ padding: '2rem', textAlign: 'center' }}>
+          <div style={{ 
+            background: '#fee', 
+            border: '1px solid #fcc', 
+            borderRadius: '8px', 
+            padding: '1.5rem',
+            maxWidth: '600px',
+            margin: '0 auto'
+          }}>
+            <h3 style={{ color: '#c33', marginBottom: '1rem' }}>Error Loading KYC Records</h3>
+            <p style={{ color: '#933', marginBottom: '1rem' }}>{loadError}</p>
+            <button 
+              onClick={loadKycRecords}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#667eea',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '1rem'
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="kyc-page">
       <div className="kyc-header">
@@ -125,20 +218,40 @@ const KYC = () => {
         <section className="kyc-panel">
           <div className="kyc-panel-title">Applicants</div>
           <div className="kyc-list">
-            {kycRecords.map((r) => {
-              const active = selectedPhone === r.user_phone;
-              const aiStatus = getAiVerificationStatus(r);
-              return (
-                <button
-                  key={r.user_phone}
-                  onClick={() => loadDetails(r.user_phone)}
-                  className={`kyc-item-compact ${active ? 'active' : ''}`}
+            {kycRecords.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
+                <p>No KYC records found.</p>
+                <button 
+                  onClick={loadKycRecords}
+                  style={{
+                    marginTop: '1rem',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#667eea',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
                 >
-                  <div className="kyc-item-name">{r.full_name || r.user_phone}</div>
-                  <span className={`ai-verification-badge ${aiStatus.class}`}>{aiStatus.text}</span>
+                  Refresh
                 </button>
-              );
-            })}
+              </div>
+            ) : (
+              kycRecords.map((r) => {
+                const active = selectedPhone === r.user_phone;
+                const aiStatus = getAiVerificationStatus(r);
+                return (
+                  <button
+                    key={r.user_phone}
+                    onClick={() => loadDetails(r.user_phone)}
+                    className={`kyc-item-compact ${active ? 'active' : ''}`}
+                  >
+                    <div className="kyc-item-name">{r.full_name || r.user_phone}</div>
+                    <span className={`ai-verification-badge ${aiStatus.class}`}>{aiStatus.text}</span>
+                  </button>
+                );
+              })
+            )}
           </div>
         </section>
 
@@ -157,6 +270,7 @@ const KYC = () => {
               </div>
 
               {actionError ? <div className="kyc-error">{actionError}</div> : null}
+              {blockchainSuccess ? <div className="kyc-success">{blockchainSuccess}</div> : null}
 
               {/* User Entered Data Section */}
               <div className="detail-section">
@@ -237,12 +351,6 @@ const KYC = () => {
                         </span>
                       </div>
                       <div className="verification-item">
-                        <span className="verification-label">Face Match:</span>
-                        <span className={`verification-badge ${selectedDetails.kyc.final_result.face_match_score < 0.6 ? 'match' : 'no-match'}`}>
-                          {selectedDetails.kyc.final_result.face_match_score < 0.6 ? `✓ Match (${(1 - selectedDetails.kyc.final_result.face_match_score).toFixed(2)})` : '✗ No Match'}
-                        </span>
-                      </div>
-                      <div className="verification-item">
                         <span className="verification-label">AI Suggestion:</span>
                         <span className={`kyc-badge ${selectedDetails.kyc.final_result.ai_suggested_status === 'APPROVED' ? 'approved' : 'rejected'}`}>
                           {selectedDetails.kyc.final_result.ai_suggested_status}
@@ -294,6 +402,27 @@ const KYC = () => {
                 <div className="kyc-hint">Approve/Reject is enabled only when status is pending.</div>
               ) : null}
 
+              {/* Blockchain Status Display */}
+              {selectedDetails.blockchain_tx_hash && (
+                <div className="blockchain-status">
+                  <div className="blockchain-header">
+                    <span className="blockchain-badge stored">On Blockchain</span>
+                  </div>
+                  <div className="blockchain-info">
+                    <div className="tx-hash">
+                      <span>TX:</span>
+                      <code>{selectedDetails.blockchain_tx_hash}</code>
+                    </div>
+                    {selectedDetails.blockchain_kyc_hash && (
+                      <div className="tx-hash">
+                        <span>Hash:</span>
+                        <code>{selectedDetails.blockchain_kyc_hash.substring(0, 32)}...</code>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="kyc-actions">
                 <button className="btn btn-primary" disabled={!canReview || actionLoading} onClick={handleApprove}>
                   {actionLoading ? 'Working…' : 'Approve'}
@@ -301,6 +430,39 @@ const KYC = () => {
                 <button className="btn btn-secondary" disabled={!canReview || actionLoading} onClick={handleReject}>
                   {actionLoading ? 'Working…' : 'Reject'}
                 </button>
+                
+                {/* Blockchain Actions */}
+                {selectedDetails.status === 'VERIFIED' && !selectedDetails.blockchain_tx_hash && (
+                  <button 
+                    className="btn btn-blockchain" 
+                    disabled={blockchainLoading} 
+                    onClick={handleStoreBlockchain}
+                    title="Store KYC record on blockchain"
+                  >
+                    {blockchainLoading ? 'Working...' : 'Store on Chain'}
+                  </button>
+                )}
+                
+                {selectedDetails.blockchain_tx_hash && (
+                  <>
+                    <button 
+                      className="btn btn-verify" 
+                      disabled={blockchainLoading} 
+                      onClick={handleVerifyBlockchain}
+                      title="Verify data integrity with blockchain"
+                    >
+                      {blockchainLoading ? 'Working...' : 'Verify'}
+                    </button>
+                    
+                    <button 
+                      className="btn btn-certificate" 
+                      onClick={() => window.open(`http://localhost:8000/api/blockchain/kyc-certificate/${selectedPhone}`, '_blank')}
+                      title="Download blockchain certificate PDF"
+                    >
+                      Certificate
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </section>

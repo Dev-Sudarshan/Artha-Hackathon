@@ -1,3 +1,11 @@
+import os
+import sys
+
+# ── Exclude venv310 from uvicorn --reload watcher ──
+# This prevents constant restarts when packages inside venv310 are touched.
+if "--reload" in sys.argv or os.environ.get("UVICORN_RELOAD"):
+    os.environ.setdefault("WATCHFILES_IGNORE_DIRS", "venv310,.venv,__pycache__,node_modules")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from db.database import init_db
@@ -13,7 +21,7 @@ from routers.transaction_routes import router as transaction_router
 from routers.repayment_routes import router as repayment_router
 from routers.default_routes import router as default_router
 from routers.audit_routes import router as audit_router
-from routers import public_ledger_routes, upload_routes
+from routers import public_ledger_routes, upload_routes, public_blockchain_routes
 from routers.dev_verify_routes import router as dev_verify_router
 from admin.admin_routes import router as admin_router
 
@@ -62,6 +70,7 @@ app.include_router(repayment_router)
 app.include_router(default_router)
 app.include_router(audit_router)
 app.include_router(public_ledger_routes.router)
+app.include_router(public_blockchain_routes.router, prefix="/api/public", tags=["Public Blockchain Explorer"])
 app.include_router(upload_routes.router)
 app.include_router(dev_verify_router)
 app.include_router(admin_router, prefix="/api", tags=["Admin Panel"])

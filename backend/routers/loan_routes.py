@@ -65,7 +65,7 @@ def delete_loan_route(
 ):
     """
     Delete/Cancel a loan request by the borrower.
-    Can be deleted if: DRAFT, PENDING_ADMIN_APPROVAL, or LISTED (not yet accepted by lender)
+    Can be deleted if: DRAFT, PENDING_VERIFICATION, PENDING_ADMIN_APPROVAL, or LISTED (not yet accepted by lender)
     """
     from db.database import get_item, delete_item
     
@@ -79,7 +79,7 @@ def delete_loan_route(
     
     # Check if loan can be deleted
     status = loan.get("status", "").upper()
-    deletable_statuses = ["DRAFT", "PENDING_ADMIN_APPROVAL", "LISTED"]
+    deletable_statuses = ["DRAFT", "PENDING_VERIFICATION", "PENDING_ADMIN_APPROVAL", "LISTED"]
     
     if status not in deletable_statuses:
         raise HTTPException(

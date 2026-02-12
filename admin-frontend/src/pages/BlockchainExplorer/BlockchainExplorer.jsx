@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Box, Database, Shield, FileText, Clock, Search, ArrowRight, CheckCircle, Server, Lock, Terminal, Cpu } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, FileText, Clock, Search, ArrowRight, CheckCircle, Lock, Shield } from 'lucide-react';
 import './BlockchainExplorer.css';
 
 const BlockchainExplorer = () => {
     const [loans, setLoans] = useState([]);
     const [stats, setStats] = useState({
         totalTransactions: 1245,
-        blockHeight: 8942,
         activeStreams: 4,
         networkStatus: 'Active'
     });
@@ -14,9 +13,6 @@ const BlockchainExplorer = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResult, setSearchResult] = useState(null);
     const [isVerifying, setIsVerifying] = useState(false);
-    const [logs, setLogs] = useState([]);
-    const logsEndRef = useRef(null);
-    const [blocks, setBlocks] = useState([]);
 
     useEffect(() => {
         // Fetch public blockchain data
@@ -36,20 +32,8 @@ const BlockchainExplorer = () => {
                     if (data.stats) {
                         setStats({
                             totalTransactions: data.stats.difficulty ? Math.floor(data.stats.blocks * 3.5) : 0, // Estimate
-                            blockHeight: data.stats.blocks,
                             activeStreams: data.stats.connections > 0 ? 3 : 1,
                             networkStatus: data.stats.is_mining ? 'Mining (Active)' : 'Syncing'
-                        });
-                    }
-                    if (data.recent_blocks && data.recent_blocks.length > 0) {
-                        setBlocks(data.recent_blocks);
-                        
-                        // Add real log based on latest block
-                        const tip = data.recent_blocks[0];
-                        const log = `[${new Date().toLocaleTimeString().split(' ')[0]}] INFO: New block found #${tip.id} (${tip.txs} txs)`;
-                        setLogs(prev => {
-                            if (prev.length > 0 && prev[prev.length-1] === log) return prev; // Dedup
-                            return [...prev.slice(-4), log];
                         });
                     }
                 }
@@ -81,9 +65,6 @@ const BlockchainExplorer = () => {
         
         setIsVerifying(true);
         setSearchResult(null);
-        
-        // Add verify log
-        setLogs(prev => [...prev.slice(-4), `[${new Date().toLocaleTimeString().split(' ')[0]}] CMD: Verifying asset '${searchQuery}' on chain...`]);
 
         try {
             const response = await fetch(`http://localhost:8000/api/public/explore/loan/${searchQuery.trim()}`);
@@ -91,12 +72,10 @@ const BlockchainExplorer = () => {
                 const data = await response.json();
                 setTimeout(() => {
                     setSearchResult({ success: true, data });
-                    setLogs(prev => [...prev.slice(-4), `[${new Date().toLocaleTimeString().split(' ')[0]}] SUCCESS: Asset verified. Hash match.`]);
                 }, 800);
             } else {
                 setTimeout(() => {
                     setSearchResult({ success: false, error: 'Asset not found or invalid' });
-                    setLogs(prev => [...prev.slice(-4), `[${new Date().toLocaleTimeString().split(' ')[0]}] ERROR: Verification failed. Asset unknown.`]);
                 }, 800);
             }
         } catch (error) {
@@ -113,71 +92,9 @@ const BlockchainExplorer = () => {
                     <h1>MultiChain Ledger</h1>
                     <p>Permissioned Financial Blockchain Network</p>
                 </div>
-                <div className="live-status">
-                    <div className="status-item">
-                        <span className="dot pulse green"></span>
-                        <span>Mainnet Active</span>
-                    </div>
-                    <div className="status-item">
-                        <span className="dot blue"></span>
-                        <span>Consensus: PBFT</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Visual Blockchain Section (Judge Impressor) */}
-            <div className="visual-chain-section">
-                <h3><Box size={18} /> Live Block Feed</h3>
-                <div className="chain-visualizer">
-                    {blocks.map((block, i) => (
-                        <div key={block.id} className="block-node animate-slide-in">
-                            <div className="block-header">#{block.id}</div>
-                            <div className="block-body">
-                                <div className="block-row"><span>Hash:</span> <small>{block.hash}</small></div>
-                                <div className="block-row"><span>TXs:</span> <strong>{block.txs}</strong></div>
-                                <div className="block-time">{block.time}</div>
-                            </div>
-                            {i < blocks.length - 1 && <div className="chain-link"></div>}
-                        </div>
-                    ))}
-                </div>
             </div>
 
             <div className="dashboard-grid">
-                {/* Network Topology */}
-                <div className="grid-card topology-card">
-                    <h3><Server size={18} /> Network Topology</h3>
-                    <div className="network-map">
-                        <div className="node master">
-                            <Cpu size={24} />
-                            <span>Validator 1</span>
-                        </div>
-                        <div className="connection">
-                            <div className="packet"></div>
-                        </div>
-                        <div className="node worker">
-                            <Database size={24} />
-                            <span>Storage Node</span>
-                        </div>
-                        <div className="connection vertical"></div>
-                        <div className="node admin">
-                            <Shield size={24} />
-                            <span>Admin Node</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Consensus Logs */}
-                <div className="grid-card logs-card">
-                    <h3><Terminal size={18} /> Consensus Logs</h3>
-                    <div className="console-window">
-                        {logs.map((log, i) => (
-                            <div key={i} className="log-line">{log}</div>
-                        ))}
-                        <div className="cursor">_</div>
-                    </div>
-                </div>
-
                 {/* Main Stats */}
                 <div className="grid-card stats-overview">
                     <div className="stat-row">
@@ -185,13 +102,6 @@ const BlockchainExplorer = () => {
                         <div>
                             <h4>{stats.totalTransactions}</h4>
                             <small>Total Transactions</small>
-                        </div>
-                    </div>
-                    <div className="stat-row">
-                        <Box className="stat-icon-sm purple" />
-                        <div>
-                            <h4>#{stats.blockHeight}</h4>
-                            <small>Block Height</small>
                         </div>
                     </div>
                     <div className="stat-row">

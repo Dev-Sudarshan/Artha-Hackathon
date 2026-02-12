@@ -68,6 +68,12 @@ class LoanOut(BaseModel):
     blockchain_tx_hash: Optional[str] = None
     blockchain_loan_hash: Optional[str] = None
     blockchain_repayment_tx_hash: Optional[str] = None
+    # Video verification fields
+    kyc_selfie_ref: Optional[str] = None
+    video_frame_ref: Optional[str] = None
+    video_verification_result: Optional[dict] = None
+    ai_suggestion: Optional[str] = None
+    ai_suggestion_reason: Optional[str] = None
 
 
 class KycRecordOut(BaseModel):
@@ -82,6 +88,8 @@ class KycRecordOut(BaseModel):
     doc_front_url: Optional[str] = None
     doc_back_url: Optional[str] = None
     selfie_url: Optional[str] = None
+    blockchain_tx_hash: Optional[str] = None
+    blockchain_kyc_hash: Optional[str] = None
     created_at: datetime
 
 
@@ -98,6 +106,8 @@ class KycDetailsOut(BaseModel):
     doc_front_url: Optional[str] = None
     doc_back_url: Optional[str] = None
     selfie_url: Optional[str] = None
+    blockchain_tx_hash: Optional[str] = None
+    blockchain_kyc_hash: Optional[str] = None
     kyc: dict[str, Any]
 
 

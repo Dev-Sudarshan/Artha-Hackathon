@@ -1,12 +1,15 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+// Use environment variable or default to localhost backend
+// In development with Vite proxy, this will use the proxy configuration
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 const adminApi = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false,
 });
 
 // Add token to requests
@@ -19,6 +22,26 @@ adminApi.interceptors.request.use(
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+// Handle response errors globally
+adminApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // If 401 Unauthorized, clear token and redirect to login
+    if (error.response?.status === 401) {
+      const currentPath = window.location.pathname;
+      // Only clear and redirect if not already on login page
+      if (!currentPath.includes('admin-login')) {
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminData');
+        console.warn('Session expired, redirecting to login...');
+        // Don't redirect immediately, let the component handle it
+        // This allows showing a proper error message first
+      }
+    }
+    return Promise.reject(error);
+  }
 );
 
 // Auth
@@ -89,6 +112,17 @@ export const approveKyc = async (userPhone, reason = null) => {
 
 export const rejectKyc = async (userPhone, reason = null) => {
   const response = await adminApi.post(`/admin/kyc/${encodeURIComponent(userPhone)}/reject`, { reason });
+  return response.data;
+};
+
+// KYC Blockchain
+export const storeKycOnBlockchain = async (userPhone) => {
+  const response = await adminApi.post(`/admin/kyc/${encodeURIComponent(userPhone)}/blockchain/store`);
+  return response.data;
+};
+
+export const verifyKycOnBlockchain = async (userPhone) => {
+  const response = await adminApi.get(`/admin/kyc/${encodeURIComponent(userPhone)}/blockchain/verify`);
   return response.data;
 };
 

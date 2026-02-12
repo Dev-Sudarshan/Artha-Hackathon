@@ -10,6 +10,7 @@ const Sidebar = () => {
     { path: '/loans', icon: '📋', label: 'Loans' },
     { path: '/kyc', icon: '🔍', label: 'KYC' },
     { path: '/transactions', icon: '💳', label: 'Transactions' },
+    { path: '/blockchain-explorer', icon: '⛓️', label: 'Blockchain' },
   ];
 
   return (

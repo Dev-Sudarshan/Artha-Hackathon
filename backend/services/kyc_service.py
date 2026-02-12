@@ -188,6 +188,13 @@ def _run_verification_background(user_id: str):
         live_photo_ref = _resolve_upload_ref(kyc_data["declaration"]["declaration_video"]["selfie_image_ref"])
         live_video_ref = _resolve_upload_ref(kyc_data["declaration"]["declaration_video"].get("video_ref"))
 
+        print(f"[KYC BG] Resolved paths:")
+        print(f"[KYC BG]   front_image = {front_image_ref} (exists={os.path.isfile(front_image_ref) if front_image_ref else 'N/A'})")
+        print(f"[KYC BG]   back_image  = {back_image_ref} (exists={os.path.isfile(back_image_ref) if back_image_ref else 'N/A'})")
+        print(f"[KYC BG]   live_photo  = {live_photo_ref} (exists={os.path.isfile(live_photo_ref) if live_photo_ref else 'N/A'})")
+        if back_image_ref and os.path.isfile(back_image_ref):
+            print(f"[KYC BG]   back_image size = {os.path.getsize(back_image_ref)} bytes")
+
         # ============================================================
         # STEP 1: OCR VERIFICATION (citizenship card)
         # ============================================================
