@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { approveLoan, getLoans, rejectLoan } from '../../services/adminApi';
+import { approveLoan, getLoans, rejectLoan, storeOnBlockchain, verifyOnBlockchain, markRepaidOnBlockchain } from '../../services/adminApi';
 import './Loans.css';
 
 // Backend URL for serving static files (PDFs, videos, etc.)
@@ -10,6 +10,8 @@ const Loans = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [blockchainLoading, setBlockchainLoading] = useState({});
+  const [blockchainSuccess, setBlockchainSuccess] = useState('');
 
   useEffect(() => {
     loadLoans();
@@ -57,6 +59,54 @@ const Loans = () => {
     }
   };
 
+  const handleStoreBlockchain = async (loanId) => {
+    setBlockchainLoading((prev) => ({ ...prev, [loanId]: true }));
+    setActionError('');
+    setBlockchainSuccess('');
+    try {
+      const result = await storeOnBlockchain(loanId);
+      setBlockchainSuccess(`Stored on blockchain. TX: ${result.txid?.substring(0, 16)}...`);
+      await loadLoans();
+    } catch (err) {
+      setActionError(err?.response?.data?.detail || err?.message || 'Blockchain store failed');
+    } finally {
+      setBlockchainLoading((prev) => ({ ...prev, [loanId]: false }));
+    }
+  };
+
+  const handleVerifyBlockchain = async (loanId) => {
+    setBlockchainLoading((prev) => ({ ...prev, [loanId]: true }));
+    setActionError('');
+    setBlockchainSuccess('');
+    try {
+      const result = await verifyOnBlockchain(loanId);
+      if (result.verified) {
+        setBlockchainSuccess('Verified. Data integrity confirmed.');
+      } else {
+        setActionError('Verification failed: Data mismatch detected.');
+      }
+    } catch (err) {
+      setActionError(err?.response?.data?.detail || err?.message || 'Blockchain verify failed');
+    } finally {
+      setBlockchainLoading((prev) => ({ ...prev, [loanId]: false }));
+    }
+  };
+
+  const handleMarkRepaidOnBlockchain = async (loanId) => {
+    setBlockchainLoading((prev) => ({ ...prev, [loanId]: true }));
+    setActionError('');
+    setBlockchainSuccess('');
+    try {
+      const result = await markRepaidOnBlockchain(loanId);
+      setBlockchainSuccess(`Marked as repaid on blockchain. TX: ${result.txid?.substring(0, 16)}...`);
+      await loadLoans();
+    } catch (err) {
+      setActionError(err?.response?.data?.detail || err?.message || 'Mark repaid failed');
+    } finally {
+      setBlockchainLoading((prev) => ({ ...prev, [loanId]: false }));
+    }
+  };
+
   if (loading) return <div className="loading">Loading loans...</div>;
 
   // Filter out draft loans (incomplete applications)
@@ -74,11 +124,16 @@ const Loans = () => {
       </div>
 
       {actionError ? <div className="loans-error">{actionError}</div> : null}
+      {blockchainSuccess ? <div className="loans-success">{blockchainSuccess}</div> : null}
 
       <div className="loans-list">
         {completedLoans.map((l) => {
           const statusText = String(l.status || '').trim();
           const isPending = statusText.toUpperCase() === 'PENDING_ADMIN_APPROVAL';
+          const isListedOrActive = ['LISTED', 'ACTIVE', 'AWAITING_SIGNATURE', 'REPAID'].includes(statusText.toUpperCase());
+          const isStoredOnChain = l.blockchain_tx_hash != null;
+          const isRepaidOnChain = l.blockchain_repayment_tx_hash != null;
+          
           return (
             <div key={l.loan_id} className="loan-card">
               <div className="loan-main">
@@ -157,6 +212,28 @@ const Loans = () => {
                     <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>No documents uploaded</span>
                   )}
                 </div>
+
+                {isStoredOnChain && (
+                  <div className="blockchain-status">
+                    <div className="blockchain-header">
+                      <span className={`blockchain-badge ${isRepaidOnChain ? 'repaid' : 'stored'}`}>
+                        {isRepaidOnChain ? 'Repaid on Chain' : 'On Blockchain'}
+                      </span>
+                    </div>
+                    <div className="blockchain-info">
+                      <div className="tx-hash">
+                        <span>TX:</span>
+                        <code>{l.blockchain_tx_hash?.substring(0, 24)}...</code>
+                      </div>
+                      {l.blockchain_loan_hash && (
+                        <div className="tx-hash">
+                          <span>Hash:</span>
+                          <code>{l.blockchain_loan_hash?.substring(0, 24)}...</code>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="loan-actions">
@@ -166,6 +243,49 @@ const Loans = () => {
                 <button className="btn btn-secondary" disabled={!isPending || actionLoading} onClick={() => handleReject(l.loan_id)}>
                   {actionLoading ? 'Working…' : 'Reject'}
                 </button>
+
+                {isListedOrActive && !isStoredOnChain && (
+                  <button 
+                    className="btn btn-blockchain" 
+                    disabled={blockchainLoading[l.loan_id]} 
+                    onClick={() => handleStoreBlockchain(l.loan_id)}
+                    title="Store loan data on blockchain"
+                  >
+                    {blockchainLoading[l.loan_id] ? 'Working...' : 'Store on Chain'}
+                  </button>
+                )}
+
+                {isStoredOnChain && (
+                  <>
+                    <button 
+                      className="btn btn-verify" 
+                      disabled={blockchainLoading[l.loan_id]} 
+                      onClick={() => handleVerifyBlockchain(l.loan_id)}
+                      title="Verify data integrity with blockchain"
+                    >
+                      {blockchainLoading[l.loan_id] ? 'Working...' : 'Verify'}
+                    </button>
+
+                    <button 
+                      className="btn btn-certificate" 
+                      onClick={() => window.open(`http://localhost:8000/api/blockchain/certificate/${l.loan_id}`, '_blank')}
+                      title="Download blockchain certificate PDF"
+                    >
+                      Certificate
+                    </button>
+                    
+                    {!isRepaidOnChain && (
+                      <button 
+                        className="btn btn-repaid" 
+                        disabled={blockchainLoading[l.loan_id]} 
+                        onClick={() => handleMarkRepaidOnBlockchain(l.loan_id)}
+                        title="Mark loan as repaid on blockchain"
+                      >
+                        {blockchainLoading[l.loan_id] ? 'Working...' : 'Mark Repaid'}
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           );

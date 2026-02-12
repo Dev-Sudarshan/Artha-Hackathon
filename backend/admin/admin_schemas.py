@@ -65,6 +65,9 @@ class LoanOut(BaseModel):
     agreement_pdf_unsigned: Optional[str] = None
     agreement_pdf_signed: Optional[str] = None
     video_verification_ref: Optional[str] = None
+    blockchain_tx_hash: Optional[str] = None
+    blockchain_loan_hash: Optional[str] = None
+    blockchain_repayment_tx_hash: Optional[str] = None
 
 
 class KycRecordOut(BaseModel):

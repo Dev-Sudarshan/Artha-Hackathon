@@ -111,9 +111,8 @@ def create_borrow_request(payload: BorrowRequestSchema):
 
     # 1️⃣ KYC check
     kyc_data = get_item("kyc", user_id) or {}
-    if not kyc_data or kyc_data.get("status") != "APPROVED":
-        print(f"WARNING: KYC not approved for {user_id}, but bypassing for DEMO")
-        # raise Exception("KYC not approved")
+    if not kyc_data or kyc_data.get("status") != "VERIFIED":
+        raise Exception("KYC not verified. Admin must approve your KYC first.")
 
     # 2️⃣ Agreement acceptance
     if not payload.agreed_to_rules:
@@ -180,6 +179,7 @@ def create_borrow_request(payload: BorrowRequestSchema):
         tenure_months=payload.tenure_months,
         net_amount_received=net_amount_received,
         net_amount_returned=total_payable,
+        loan_id=loan_id,
     )
 
     # 9️⃣ Video Verification Enrollment
@@ -211,6 +211,8 @@ def create_borrow_request(payload: BorrowRequestSchema):
     loan_data = {
         "loan_id": loan_id,
         "user_id": user_id,
+        "borrower_name": borrower_name,
+        "borrower_citizenship_no": borrower_cit_no,
         "amount": payload.amount,
         "interest_rate": payload.interest_rate,
         "tenure_months": payload.tenure_months,
@@ -364,13 +366,33 @@ def accept_loan(payload: LenderAcceptanceSchema):
         raise Exception("Loan is not available for acceptance")
 
     lender_kyc = get_item("kyc", lender_id)
-    if not lender_kyc or lender_kyc.get("status") != "APPROVED":
-        raise Exception("Lender KYC not approved")
+    if not lender_kyc or lender_kyc.get("status") != "VERIFIED":
+        raise Exception("Lender KYC not verified")
 
     # Update loan
     loan["lender_id"] = lender_id
     loan["status"] = "ACTIVE"
     loan["start_timestamp"] = payload.accepted_at.isoformat()
+
+    # --- BLOCKCHAIN: Store funded loan with full data ---
+    try:
+        from services.blockchain_service import get_blockchain_service
+        from blockchain.utils import sha256_hash
+        bc = get_blockchain_service()
+        success, tx_hash, error = bc.store_loan_on_chain(
+            loan_id=loan_id,
+            loan_data=loan,
+            borrower_address=loan.get("user_id"),
+            lender_address=lender_id,
+        )
+        if success and tx_hash:
+            loan["blockchain_tx_hash"] = tx_hash
+            loan["blockchain_loan_hash"] = sha256_hash(loan)
+            print(f"Loan {loan_id} funded & stored on blockchain. TX: {tx_hash}")
+        else:
+            print(f"Blockchain store returned error on funding: {error}")
+    except Exception as bc_err:
+        print(f"Failed to store funded loan on blockchain: {bc_err}")
 
     put_item("loans", loan_id, loan)
 

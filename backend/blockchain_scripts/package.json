@@ -1,0 +1,19 @@
+{
+  "name": "aartha-blockchain-scripts",
+  "version": "1.0.0",
+  "description": "Blockchain interaction scripts for Aartha P2P Lending Platform",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "blockchain",
+    "ethers",
+    "lending"
+  ],
+  "author": "Aartha Team",
+  "license": "ISC",
+  "dependencies": {
+    "ethers": "^6.10.0"
+  }
+}
