@@ -62,6 +62,9 @@ class LoanOut(BaseModel):
     interest_rate: float
     status: str
     created_at: Optional[datetime] = None
+    blockchain_tx_hash: Optional[str] = None
+    blockchain_loan_hash: Optional[str] = None
+    blockchain_repayment_tx_hash: Optional[str] = None
 
 
 class KycRecordOut(BaseModel):

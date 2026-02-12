@@ -4,6 +4,8 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, Frame
 from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.colors import HexColor
+from datetime import datetime
 import os
 import textwrap
 import uuid
@@ -47,6 +49,114 @@ Guarantor is equally and severally liable.
 """
 
 
+def _draw_blockchain_verification_page(c, width, height, loan_id, blockchain_tx_hash, blockchain_loan_hash, approval_date=None):
+    """
+    Draws a blockchain verification page on the current canvas page.
+    This page contains the loan ID, TX hash, and data hash for admin verification.
+    """
+    # Background header band
+    c.setFillColor(HexColor("#1a237e"))
+    c.rect(0, height - 55 * mm, width, 55 * mm, fill=1, stroke=0)
+
+    # Title
+    c.setFillColor(HexColor("#ffffff"))
+    c.setFont("Helvetica-Bold", 18)
+    c.drawCentredString(width / 2, height - 20 * mm, "BLOCKCHAIN VERIFICATION CERTIFICATE")
+    c.setFont("Helvetica", 11)
+    c.drawCentredString(width / 2, height - 30 * mm, "ARTHA P2P PLATFORM - Immutable Loan Record")
+    c.setFont("Helvetica", 9)
+    c.drawCentredString(width / 2, height - 40 * mm, "This page certifies that the loan agreement has been recorded on the blockchain")
+
+    # Reset fill color
+    c.setFillColor(HexColor("#000000"))
+
+    y = height - 75 * mm
+
+    # Loan ID (large, prominent)
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(25 * mm, y, "LOAN ID:")
+    c.setFont("Courier-Bold", 14)
+    c.setFillColor(HexColor("#1a237e"))
+    c.drawString(55 * mm, y, str(loan_id))
+    c.setFillColor(HexColor("#000000"))
+    y -= 15 * mm
+
+    # Approval date
+    if approval_date:
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(25 * mm, y, "Approval Date:")
+        c.setFont("Helvetica", 11)
+        c.drawString(65 * mm, y, str(approval_date))
+        y -= 12 * mm
+
+    # Divider
+    c.setStrokeColor(HexColor("#1a237e"))
+    c.setLineWidth(1.5)
+    c.line(25 * mm, y, width - 25 * mm, y)
+    y -= 12 * mm
+
+    # Blockchain Transaction Hash
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(25 * mm, y, "Blockchain Transaction Hash (TX Hash):")
+    y -= 8 * mm
+    c.setFont("Courier", 9)
+    tx_display = str(blockchain_tx_hash) if blockchain_tx_hash else "Pending..."
+    # Wrap long hash across lines
+    for i in range(0, len(tx_display), 80):
+        c.drawString(25 * mm, y, tx_display[i:i+80])
+        y -= 6 * mm
+    y -= 4 * mm
+
+    # Blockchain Data Hash
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(25 * mm, y, "Loan Data Hash (SHA-256):")
+    y -= 8 * mm
+    c.setFont("Courier", 9)
+    hash_display = str(blockchain_loan_hash) if blockchain_loan_hash else "Pending..."
+    for i in range(0, len(hash_display), 80):
+        c.drawString(25 * mm, y, hash_display[i:i+80])
+        y -= 6 * mm
+    y -= 8 * mm
+
+    # Divider
+    c.setStrokeColor(HexColor("#1a237e"))
+    c.line(25 * mm, y, width - 25 * mm, y)
+    y -= 12 * mm
+
+    # Verification instructions box
+    c.setStrokeColor(HexColor("#455a64"))
+    c.setLineWidth(0.5)
+    box_top = y
+    box_height = 50 * mm
+    c.rect(25 * mm, y - box_height, width - 50 * mm, box_height, fill=0, stroke=1)
+
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColor(HexColor("#1a237e"))
+    c.drawString(28 * mm, y - 6 * mm, "HOW TO VERIFY THIS LOAN:")
+    c.setFillColor(HexColor("#000000"))
+    c.setFont("Helvetica", 9)
+
+    instructions = [
+        "1. Go to the Artha P2P Blockchain Explorer",
+        f"2. Search for Loan ID: {loan_id}",
+        "3. Or search using the TX Hash shown above",
+        "4. The explorer will show the on-chain record matching this agreement",
+        "5. Compare the Data Hash above with the hash shown in the explorer",
+        "6. If both hashes match, the loan data has NOT been tampered with",
+    ]
+    iy = y - 14 * mm
+    for inst in instructions:
+        c.drawString(28 * mm, iy, inst)
+        iy -= 6 * mm
+
+    # Footer
+    c.setFont("Helvetica-Oblique", 8)
+    c.setFillColor(HexColor("#666666"))
+    c.drawCentredString(width / 2, 20 * mm, "This blockchain record is immutable and cannot be altered after creation.")
+    c.drawCentredString(width / 2, 15 * mm, f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    c.setFillColor(HexColor("#000000"))
+
+
 def generate_loan_agreement_pdf(
     borrower_full_name: str,
     borrower_citizenship_no: str,
@@ -57,11 +167,17 @@ def generate_loan_agreement_pdf(
     tenure_months: int,
     net_amount_received: float,
     net_amount_returned: float,
+    loan_id: str = None,
+    blockchain_tx_hash: str = None,
+    blockchain_loan_hash: str = None,
+    approval_date: str = None,
     output_dir: str = "generated_pdfs",
 ):
     """
-    Generates unsigned loan agreement PDF (A4, multi-page)
-    Returns file path
+    Generates loan agreement PDF (A4, multi-page).
+    Includes Loan ID on the first page.
+    If blockchain hashes are provided, appends a Blockchain Verification page.
+    Returns file path.
     """
 
     os.makedirs(output_dir, exist_ok=True)
@@ -80,8 +196,15 @@ def generate_loan_agreement_pdf(
     c.drawCentredString(width / 2, height - 30 * mm, "ARTHA P2P PLATFORM")
     c.drawCentredString(width / 2, height - 40 * mm, "RULES AND REGULATIONS")
 
+    # Loan ID prominently displayed
+    if loan_id:
+        c.setFont("Helvetica-Bold", 12)
+        c.setFillColor(HexColor("#1a237e"))
+        c.drawCentredString(width / 2, height - 50 * mm, f"LOAN ID: {loan_id}")
+        c.setFillColor(HexColor("#000000"))
+
     c.setFont("Helvetica", 11)
-    y = height - 60 * mm
+    y = height - 65 * mm
 
     details = [
         f"Borrower Full Name: {borrower_full_name}",
@@ -129,7 +252,7 @@ def generate_loan_agreement_pdf(
 
     c.showPage()
 
-    # -------- FINAL PAGE : THUMBPRINTS --------
+    # -------- THUMBPRINTS PAGE --------
     c.setFont("Helvetica-Bold", 12)
     c.drawCentredString(width / 2, height - 30 * mm, "THUMBPRINT CONFIRMATION")
 
@@ -147,6 +270,69 @@ def generate_loan_agreement_pdf(
     c.drawString(80 * mm, height - 165 * mm, "Right Thumb")
 
     c.showPage()
+
+    # -------- BLOCKCHAIN VERIFICATION PAGE (if hashes provided) --------
+    if blockchain_tx_hash or blockchain_loan_hash:
+        _draw_blockchain_verification_page(
+            c, width, height,
+            loan_id=loan_id,
+            blockchain_tx_hash=blockchain_tx_hash,
+            blockchain_loan_hash=blockchain_loan_hash,
+            approval_date=approval_date,
+        )
+        c.showPage()
+
     c.save()
 
     return file_path
+
+
+def regenerate_agreement_with_blockchain(
+    loan_data: dict,
+    blockchain_tx_hash: str,
+    blockchain_loan_hash: str,
+    approval_date: str = None,
+    output_dir: str = "generated_pdfs",
+) -> str:
+    """
+    Regenerates the loan agreement PDF with blockchain verification data.
+    Called after admin approval when blockchain hashes are available.
+    Returns the new file path.
+    """
+    # Extract borrower info from loan data
+    basic_info = loan_data.get("basic_info", {})
+    # Try multiple locations for borrower name
+    borrower_name = loan_data.get("borrower_name", "")
+    if not borrower_name:
+        borrower_name = " ".join(filter(None, [
+            basic_info.get("first_name", ""),
+            basic_info.get("middle_name", ""),
+            basic_info.get("last_name", ""),
+        ]))
+    if not borrower_name:
+        borrower_name = loan_data.get("user_id", "N/A")
+
+    borrower_cit_no = loan_data.get("borrower_citizenship_no", "N/A")
+    if borrower_cit_no == "N/A":
+        borrower_cit_no = loan_data.get("id_documents", {}).get("id_details", {}).get("id_number", "N/A")
+
+    guarantor = loan_data.get("guarantor", {}) or {}
+    guarantor_name = guarantor.get("full_name", "N/A") if isinstance(guarantor, dict) else "N/A"
+    guarantor_cit = guarantor.get("citizenship_no", "N/A") if isinstance(guarantor, dict) else "N/A"
+
+    return generate_loan_agreement_pdf(
+        borrower_full_name=borrower_name,
+        borrower_citizenship_no=borrower_cit_no,
+        guarantor_full_name=guarantor_name,
+        guarantor_citizenship_no=guarantor_cit,
+        amount=loan_data.get("amount", 0),
+        interest_rate=loan_data.get("interest_rate", 0),
+        tenure_months=loan_data.get("tenure_months", 0),
+        net_amount_received=loan_data.get("net_amount_received", 0),
+        net_amount_returned=loan_data.get("total_payable", 0),
+        loan_id=loan_data.get("loan_id", ""),
+        blockchain_tx_hash=blockchain_tx_hash,
+        blockchain_loan_hash=blockchain_loan_hash,
+        approval_date=approval_date,
+        output_dir=output_dir,
+    )

@@ -40,6 +40,21 @@ def record_repayment(repayment_payload: dict, loan_id: str) -> str:
 
 def record_fee_allocation(fee_payload: dict, loan_id: str) -> str:
     """
+    Hash fee allocation details and store on blockchain
+    """
+    fee_hash = sha256_hash(fee_payload)
+
+    publish_to_stream(
+        stream=FEE_STREAM,
+        key=loan_id,
+        value=fee_hash
+    )
+
+    return fee_hash
+
+
+def record_fee_allocation(fee_payload: dict, loan_id: str) -> str:
+    """
     Hash platform fee & insurance allocation and store on blockchain
     """
     fee_hash = sha256_hash(fee_payload)

@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
@@ -9,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from admin import admin_models as models, admin_schemas as schemas
 from admin.admin_auth import create_access_token, require_roles, verify_password
 from db.database import get_db, get_all_items, get_item, put_item
+from blockchain.loan_status import record_loan_status
 
 router = APIRouter()
 logger = logging.getLogger("artha.admin")
@@ -148,6 +150,9 @@ def transform_to_loan(loan_id: str, loan_data: dict, index: int) -> schemas.Loan
         interest_rate=float(loan_data.get("interest_rate", 0)),
         status=loan_data.get("status", "UNKNOWN"),
         created_at=_parse_datetime(loan_data.get("created_at")),
+        blockchain_tx_hash=loan_data.get("blockchain_tx_hash"),
+        blockchain_loan_hash=loan_data.get("blockchain_loan_hash"),
+        blockchain_repayment_tx_hash=loan_data.get("blockchain_repayment_tx_hash"),
     )
 
 
@@ -498,8 +503,69 @@ def approve_loan(
         "decision": "APPROVED",
         "reason": payload.reason,
     }
+
+    # --- BLOCKCHAIN INTEGRATION: Store loan on chain ---
+    try:
+        from services.blockchain_service import get_blockchain_service
+        bc = get_blockchain_service()
+        success, tx_hash, error = bc.store_loan_on_chain(
+            loan_id=loan_id,
+            loan_data=loan,
+            borrower_address=loan.get("user_id"),
+            lender_address=loan.get("lender_id"),
+        )
+        if success and tx_hash:
+            from blockchain.utils import sha256_hash
+            loan["blockchain_tx_hash"] = tx_hash
+            loan["blockchain_loan_hash"] = sha256_hash(loan)
+            print(f"Loan {loan_id} stored on blockchain. TX: {tx_hash}")
+
+            # Regenerate agreement PDF with blockchain verification page
+            try:
+                from services.pdf_service import regenerate_agreement_with_blockchain
+                approval_dt = loan.get("admin_review", {}).get("reviewed_at", datetime.utcnow().isoformat())
+                new_pdf_path = regenerate_agreement_with_blockchain(
+                    loan_data=loan,
+                    blockchain_tx_hash=tx_hash,
+                    blockchain_loan_hash=loan["blockchain_loan_hash"],
+                    approval_date=approval_dt,
+                )
+                loan["agreement_pdf"] = f"/pdfs/{os.path.basename(new_pdf_path)}"
+                loan["agreement_pdf_unsigned"] = new_pdf_path
+                print(f"Agreement PDF regenerated with blockchain proof: {new_pdf_path}")
+            except Exception as pdf_err:
+                print(f"Failed to regenerate agreement PDF: {pdf_err}")
+        else:
+            print(f"Blockchain store returned error: {error}")
+    except Exception as e:
+        print(f"Failed to store loan on blockchain: {e}")
+
     put_item("loans", loan_id, loan)
-    return {"message": "Loan approved and listed", "loan_id": loan_id, "status": "LISTED"}
+
+    # --- Record status change on blockchain ---
+    try:
+        record_loan_status(
+            loan_id=loan_id,
+            status="LISTED",
+            tx_hash=loan.get("blockchain_tx_hash"), 
+            extra_metadata={
+                "action": "ADMIN_APPROVAL",
+                "reviewed_by": admin.email,
+                "reason": payload.reason
+            }
+        )
+        print(f"Loan {loan_id} ADMIN_APPROVAL recorded on blockchain.")
+    except Exception as e:
+        print(f"Failed to record loan approval on blockchain: {e}")
+    # ------------------------------
+
+    return {
+        "message": "Loan approved and listed", 
+        "loan_id": loan_id, 
+        "status": "LISTED",
+        "blockchain_tx_hash": loan.get("blockchain_tx_hash"),
+        "blockchain_loan_hash": loan.get("blockchain_loan_hash"),
+    }
 
 
 @router.post("/admin/loans/{loan_id}/reject")
@@ -524,6 +590,94 @@ def reject_loan(
     }
     put_item("loans", loan_id, loan)
     return {"message": "Loan rejected", "loan_id": loan_id, "status": "REJECTED_BY_ADMIN"}
+
+
+# ===========================
+# BLOCKCHAIN ADMIN ROUTES
+# ===========================
+
+@router.post("/admin/loans/{loan_id}/blockchain/store")
+def store_loan_on_blockchain(
+    loan_id: str,
+    admin=Depends(require_roles(["super_admin", "finance_admin"])),
+):
+    """Manually store a loan on the blockchain"""
+    loan = get_item("loans", loan_id) or {}
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    try:
+        from services.blockchain_service import get_blockchain_service
+        from blockchain.utils import sha256_hash
+        bc = get_blockchain_service()
+        success, tx_hash, error = bc.store_loan_on_chain(
+            loan_id=loan_id,
+            loan_data=loan,
+            borrower_address=loan.get("user_id"),
+            lender_address=loan.get("lender_id"),
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail=error or "Blockchain store failed")
+        
+        loan["blockchain_tx_hash"] = tx_hash
+        loan["blockchain_loan_hash"] = sha256_hash(loan)
+        put_item("loans", loan_id, loan)
+        
+        return {"success": True, "txid": tx_hash, "loan_hash": loan["blockchain_loan_hash"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/admin/loans/{loan_id}/blockchain/verify")
+def verify_loan_on_blockchain(
+    loan_id: str,
+    admin=Depends(require_roles(["super_admin", "finance_admin"])),
+):
+    """Verify loan data integrity against blockchain record"""
+    loan = get_item("loans", loan_id) or {}
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    try:
+        from services.blockchain_service import get_blockchain_service
+        bc = get_blockchain_service()
+        is_valid, error = bc.verify_loan_integrity(loan_id, loan)
+        return {"verified": is_valid, "error": error}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/loans/{loan_id}/blockchain/mark-repaid")
+def mark_loan_repaid_on_blockchain(
+    loan_id: str,
+    admin=Depends(require_roles(["super_admin", "finance_admin"])),
+):
+    """Mark loan as repaid on the blockchain"""
+    loan = get_item("loans", loan_id) or {}
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    try:
+        from services.blockchain_service import get_blockchain_service
+        bc = get_blockchain_service()
+        success, tx_hash, error = bc.mark_loan_repaid_on_chain(
+            loan_id=loan_id,
+            repayment_amount=loan.get("amount", 0),
+            borrower_address=loan.get("user_id"),
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail=error or "Blockchain repaid marking failed")
+        
+        loan["blockchain_repayment_tx_hash"] = tx_hash
+        put_item("loans", loan_id, loan)
+        
+        return {"success": True, "txid": tx_hash}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/admin/kyc", response_model=schemas.Page[schemas.KycRecordOut])
@@ -592,7 +746,7 @@ def approve_kyc(
     if not kyc_data:
         raise HTTPException(status_code=404, detail="KYC record not found")
 
-    kyc_data["status"] = "APPROVED"
+    kyc_data["status"] = "VERIFIED"
     kyc_data["review"] = {
         "reviewed_by": admin.email,
         "reviewed_at": datetime.utcnow().isoformat(),
@@ -600,7 +754,7 @@ def approve_kyc(
         "reason": payload.reason,
     }
     put_item("kyc", user_phone, kyc_data)
-    return {"message": "KYC approved", "user_phone": user_phone, "status": "APPROVED"}
+    return {"message": "KYC approved", "user_phone": user_phone, "status": "VERIFIED"}
 
 
 @router.post("/admin/kyc/{user_phone}/reject")
