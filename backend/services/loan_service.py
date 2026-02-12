@@ -13,6 +13,38 @@ from models.video_verification import verify_video_identity
 
 from db.database import get_item, put_item, get_all_items
 import uuid
+from urllib.parse import urlparse
+
+
+def _resolve_upload_ref(ref: str) -> str:
+    """Resolve frontend-provided refs (e.g. '/static/uploads/x.png' or full URLs) to local disk paths.
+
+    The AI pipeline expects filesystem paths. The upload API returns browser URLs under /static/uploads.
+    """
+    if not ref:
+        return ref
+
+    text = str(ref).strip().replace('\\', '/').replace('\\\\', '/')
+    # If it's a full URL, extract only the path portion
+    if text.startswith('http://') or text.startswith('https://'):
+        try:
+            text = urlparse(text).path or text
+        except Exception:
+            pass
+
+    # Normalize leading slash variants
+    if text.startswith('static/uploads/'):
+        filename = text.split('static/uploads/', 1)[1]
+    elif text.startswith('/static/uploads/'):
+        filename = text.split('/static/uploads/', 1)[1]
+    else:
+        # Already a filesystem path or non-static reference
+        return ref
+
+    backend_dir = os.path.dirname(__file__)
+    static_dir = os.path.abspath(os.path.join(backend_dir, '..', 'static'))
+    uploads_dir = os.path.join(static_dir, 'uploads')
+    return os.path.join(uploads_dir, filename)
 
 
 # ---- CONSTANTS ----
@@ -154,14 +186,28 @@ def create_borrow_request(payload: BorrowRequestSchema):
     if payload.video_verification_ref:
         # Get card from KYC
         front_image_ref = kyc_data["id_documents"]["id_images"]["front_image_ref"]
+        
+        # Resolve URL references to filesystem paths
+        video_path = _resolve_upload_ref(payload.video_verification_ref)
+        citizenship_image_path = _resolve_upload_ref(front_image_ref)
+        
+        print(f"[DEBUG] Video path resolved to: {video_path}")
+        print(f"[DEBUG] Citizenship image path resolved to: {citizenship_image_path}")
+        
         video_result = verify_video_identity(
-            video_path=payload.video_verification_ref,
-            citizenship_image_path=front_image_ref
+            video_path=video_path,
+            reference_photo_path=citizenship_image_path
         )
         if video_result["final_status"] != "APPROVED":
             raise Exception(f"Video verification failed: {video_result.get('reason')}")
 
     # 🔟 Store loan draft (DB)
+    # Determine loan status based on completion
+    # DRAFT: Step 1 completed (basic info + PDF generated)
+    # PENDING_ADMIN_APPROVAL: Step 2 completed (signed PDF + video uploaded)
+    is_complete = bool(payload.agreement_pdf_signed and payload.video_verification_ref)
+    loan_status = "PENDING_ADMIN_APPROVAL" if is_complete else "DRAFT"
+    
     loan_data = {
         "loan_id": loan_id,
         "user_id": user_id,
@@ -178,16 +224,20 @@ def create_borrow_request(payload: BorrowRequestSchema):
         "agreement_pdf_signed": payload.agreement_pdf_signed,
         "video_verification_ref": payload.video_verification_ref,
         "credit_score": credit_score,
-        "status": "PENDING_ADMIN_APPROVAL",
+        "status": loan_status,
         "created_at": payload.submitted_at, # This is int from frontend
     }
 
     put_item("loans", loan_id, loan_data)
-    print(f"Loan {loan_id} created and awaiting admin approval.")
+    
+    if is_complete:
+        print(f"Loan {loan_id} submitted and awaiting admin approval.")
+    else:
+        print(f"Loan {loan_id} saved as DRAFT (awaiting signed PDF + video).")
 
     return {
         "loan_id": loan_id,
-        "status": "PENDING_ADMIN_APPROVAL",
+        "status": loan_status,
         "agreement_pdf": f"/pdfs/{os.path.basename(pdf_ref)}",
         "emi": emi,
         "total_payable": total_payable,

@@ -139,6 +139,26 @@ def transform_to_lender(user_phone: str, user_data: dict, index: int, all_loans:
 
 def transform_to_loan(loan_id: str, loan_data: dict, index: int) -> schemas.LoanOut:
     """Transform JSONB loan data to LoanOut schema"""
+    # Format PDF and video URLs
+    pdf_unsigned = loan_data.get("agreement_pdf_unsigned")
+    pdf_signed = loan_data.get("agreement_pdf_signed")
+    video_ref = loan_data.get("video_verification_ref")
+    
+    # Convert file paths to URLs
+    pdf_unsigned_url = None
+    if pdf_unsigned:
+        # Extract filename from path
+        filename = pdf_unsigned.split("/")[-1].split("\\")[-1]
+        pdf_unsigned_url = f"/pdfs/{filename}"
+    
+    pdf_signed_url = None
+    if pdf_signed:
+        pdf_signed_url = pdf_signed if pdf_signed.startswith("http") or pdf_signed.startswith("/") else f"/static/{pdf_signed}"
+    
+    video_url = None
+    if video_ref:
+        video_url = video_ref if video_ref.startswith("http") or video_ref.startswith("/") else f"/static/{video_ref}"
+    
     return schemas.LoanOut(
         id=index,
         loan_id=loan_id,
@@ -148,6 +168,9 @@ def transform_to_loan(loan_id: str, loan_data: dict, index: int) -> schemas.Loan
         interest_rate=float(loan_data.get("interest_rate", 0)),
         status=loan_data.get("status", "UNKNOWN"),
         created_at=_parse_datetime(loan_data.get("created_at")),
+        agreement_pdf_unsigned=pdf_unsigned_url,
+        agreement_pdf_signed=pdf_signed_url,
+        video_verification_ref=video_url,
     )
 
 

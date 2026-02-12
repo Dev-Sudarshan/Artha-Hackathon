@@ -6,6 +6,9 @@ import { ArrowRight, Calculator, Upload, Video, AlertTriangle, ShieldCheck } fro
 import '../../styles/Auth.css';
 import './LoanRequest.css';
 
+// Backend URL for serving PDFs
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
 const LoanRequest = () => {
     const { user, setUserRole } = useAuth();
     const navigate = useNavigate();
@@ -332,6 +335,21 @@ const LoanRequest = () => {
                         </form>
                     ) : (
                         <form onSubmit={handleSubmit} className="animate-fade">
+                            {/* Info Alert - Draft Status */}
+                            <div className="alert p-6 rounded-2xl bg-blue-50 border-2 border-blue-200 mb-8">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-200 text-blue-800 flex items-center justify-center flex-shrink-0 mt-1">
+                                        <AlertTriangle size={18} />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-blue-900 mb-1">Complete This Step to Submit Your Loan</h4>
+                                        <p className="text-sm text-blue-700 leading-relaxed">
+                                            Your loan details have been saved as a <strong>DRAFT</strong>. To submit for admin approval and make it visible in the marketplace, you must upload both the signed agreement and video verification below.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* ... (Alerts section same as before) ... */}
                             <div className="alert p-8 rounded-3xl bg-amber-50 border border-amber-100 mb-10">
                                 <div className="flex items-center gap-3 text-amber-700 font-black uppercase tracking-widest text-sm mb-4">
@@ -371,7 +389,7 @@ const LoanRequest = () => {
                                 <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100">
                                     <h5 className="font-black text-slate-800 mb-3">1. Policy Acceptance</h5>
                                     <p className="text-sm text-muted mb-6">Download, print, sign, and fingerprint the policy document.</p>
-                                    <a href={agreementPdf} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-black text-primary hover:underline mb-6">
+                                    <a href={agreementPdf ? `${BACKEND_BASE_URL}${agreementPdf}` : '#'} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-black text-primary hover:underline mb-6">
                                         <Upload size={16} style={{ transform: 'rotate(180deg)' }} /> Download Official Policy (PDF)
                                     </a>
                                     <label className="upload-tile upload-tile-md block w-full text-center py-4 rounded-2xl transition-all cursor-pointer">

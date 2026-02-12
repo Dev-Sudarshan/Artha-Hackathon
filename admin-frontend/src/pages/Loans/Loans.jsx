@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { approveLoan, getLoans, rejectLoan } from '../../services/adminApi';
 import './Loans.css';
 
+// Backend URL for serving static files (PDFs, videos, etc.)
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
 const Loans = () => {
   const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,17 +59,24 @@ const Loans = () => {
 
   if (loading) return <div className="loading">Loading loans...</div>;
 
+  // Filter out draft loans (incomplete applications)
+  const completedLoans = loans.filter(l => l.status && l.status.toUpperCase() !== 'DRAFT');
+  const draftCount = loans.length - completedLoans.length;
+
   return (
     <div className="loans-page">
       <div className="loans-header">
         <h1>Loans Management</h1>
-        <div className="loans-subtitle">Total loans: <b>{loans.length}</b></div>
+        <div className="loans-subtitle">
+          Total loans: <b>{completedLoans.length}</b>
+          {draftCount > 0 && <span style={{ color: '#94a3b8', marginLeft: '8px' }}>({draftCount} incomplete)</span>}
+        </div>
       </div>
 
       {actionError ? <div className="loans-error">{actionError}</div> : null}
 
       <div className="loans-list">
-        {loans.map((l) => {
+        {completedLoans.map((l) => {
           const statusText = String(l.status || '').trim();
           const isPending = statusText.toUpperCase() === 'PENDING_ADMIN_APPROVAL';
           return (
@@ -79,6 +89,73 @@ const Loans = () => {
                 <div className="loan-meta">Borrower: <b>{l.borrower_phone || '—'}</b></div>
                 <div className="loan-meta">
                   Amount: <b>NPR {Number(l.amount || 0).toLocaleString()}</b> • Rate: <b>{l.interest_rate}%</b>
+                </div>
+                
+                {/* Document Links */}
+                <div className="loan-documents" style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {l.agreement_pdf_unsigned && (
+                    <a 
+                      href={`${BACKEND_BASE_URL}${l.agreement_pdf_unsigned}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="doc-link"
+                      style={{ 
+                        padding: '6px 12px', 
+                        background: '#EFF6FF', 
+                        color: '#2563EB', 
+                        borderRadius: '6px', 
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        textDecoration: 'none',
+                        display: 'inline-block'
+                      }}
+                    >
+                      📄 View Unsigned PDF
+                    </a>
+                  )}
+                  {l.agreement_pdf_signed && (
+                    <a 
+                      href={`${BACKEND_BASE_URL}${l.agreement_pdf_signed}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="doc-link"
+                      style={{ 
+                        padding: '6px 12px', 
+                        background: '#DCFCE7', 
+                        color: '#16A34A', 
+                        borderRadius: '6px', 
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        textDecoration: 'none',
+                        display: 'inline-block'
+                      }}
+                    >
+                      📝 View Signed PDF
+                    </a>
+                  )}
+                  {l.video_verification_ref && (
+                    <a 
+                      href={`${BACKEND_BASE_URL}${l.video_verification_ref}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="doc-link"
+                      style={{ 
+                        padding: '6px 12px', 
+                        background: '#FEF3C7', 
+                        color: '#D97706', 
+                        borderRadius: '6px', 
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        textDecoration: 'none',
+                        display: 'inline-block'
+                      }}
+                    >
+                      🎥 View Video
+                    </a>
+                  )}
+                  {!l.agreement_pdf_unsigned && !l.agreement_pdf_signed && !l.video_verification_ref && (
+                    <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>No documents uploaded</span>
+                  )}
                 </div>
               </div>
 

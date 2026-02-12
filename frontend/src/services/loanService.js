@@ -92,6 +92,12 @@ const loanService = {
     getUserPortfolio: async () => {
         const response = await api.get('/loans/my-portfolio');
         return response.data;
+    },
+
+    // 6. Delete/Cancel Loan
+    deleteLoan: async (loanId) => {
+        const response = await api.delete(`/loans/${loanId}`);
+        return response.data;
     }
 };
 

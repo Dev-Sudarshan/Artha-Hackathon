@@ -62,6 +62,9 @@ class LoanOut(BaseModel):
     interest_rate: float
     status: str
     created_at: Optional[datetime] = None
+    agreement_pdf_unsigned: Optional[str] = None
+    agreement_pdf_signed: Optional[str] = None
+    video_verification_ref: Optional[str] = None
 
 
 class KycRecordOut(BaseModel):

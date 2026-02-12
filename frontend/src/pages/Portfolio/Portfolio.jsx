@@ -83,6 +83,25 @@ const Portfolio = () => {
         }
     };
 
+    const handleDeleteLoan = async (loanId) => {
+        if (!window.confirm('Are you sure you want to delete this loan request? This action cannot be undone.')) {
+            return;
+        }
+        
+        setLoading(true);
+        try {
+            await loanService.deleteLoan(loanId);
+            alert("Loan request deleted successfully!");
+            // Refresh data
+            const newData = await loanService.getUserPortfolio();
+            setPortfolioData(newData);
+        } catch (error) {
+            alert("Failed to delete loan: " + (error.response?.data?.detail || error.message));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="container mt-8 mb-16 animate-fade">
             <div className="portfolio-header mb-12 flex justify-between items-end">
@@ -161,7 +180,7 @@ const Portfolio = () => {
                                     Status: {activeLoan.status === 'PENDING_ADMIN_APPROVAL' ? 'Pending Admin Approval' : 'Awaiting Lender Funding'}
                                 </span>
                             </p>
-                            <div className="inline-flex gap-8 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                            <div className="inline-flex gap-8 p-6 bg-white rounded-2xl border border-slate-100 shadow-sm mb-8">
                                 <div className="text-center px-4 border-r border-slate-100">
                                     <p className="text-xs font-black uppercase text-slate-400 tracking-widest mb-1">Amount</p>
                                     <p className="text-xl font-black text-slate-800">NPR {activeLoan.amount.toLocaleString()}</p>
@@ -171,6 +190,17 @@ const Portfolio = () => {
                                     <p className="text-xl font-black text-slate-800">{activeLoan.tenure} Months</p>
                                 </div>
                             </div>
+                            {/* Delete Button for Pending/Listed/Draft Loans */}
+                            {(activeLoan.status === 'PENDING_ADMIN_APPROVAL' || activeLoan.status === 'LISTED' || activeLoan.status === 'DRAFT') && (
+                                <button 
+                                    onClick={() => handleDeleteLoan(activeLoan.id)}
+                                    disabled={loading}
+                                    className="btn text-red-600 border-2 border-red-300 hover:bg-red-50 hover:border-red-400 px-8 py-3 rounded-xl font-bold transition-all shadow-sm"
+                                    style={{ marginTop: '8px', background: 'white' }}
+                                >
+                                    {loading ? 'Deleting...' : '🗑️ Cancel Loan Request'}
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <>

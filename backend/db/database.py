@@ -34,9 +34,12 @@ def _normalize_db_url(url: str) -> str:
     if not url:
         raise ValueError("DATABASE_URL is not set")
     if "sslmode=" in url:
+        # Still ensure connect_timeout is present
+        if "connect_timeout" not in url:
+            url += "&connect_timeout=10"
         return url
     separator = "&" if "?" in url else "?"
-    return f"{url}{separator}sslmode=require"
+    return f"{url}{separator}sslmode=require&connect_timeout=10"
 
 
 # ---- CONNECTION POOL (reuses warm TCP+SSL connections) ----
@@ -57,7 +60,18 @@ def _get_pool():
 
 def get_connection():
     """Get a connection from the pool (much faster than opening a new one each time)."""
-    return _get_pool().getconn()
+    conn = _get_pool().getconn()
+    # Test that the connection is still alive (Render free DBs drop idle connections)
+    try:
+        conn.cursor().execute("SELECT 1")
+    except Exception:
+        # Connection is dead — reset it
+        try:
+            _get_pool().putconn(conn, close=True)
+        except Exception:
+            pass
+        conn = _get_pool().getconn()
+    return conn
 
 
 def release_connection(conn):
@@ -68,7 +82,12 @@ def release_connection(conn):
         pass
 
 def init_db():
-    conn = get_connection()
+    try:
+        conn = get_connection()
+    except Exception as e:
+        print(f"[DB] WARNING: Could not connect to database during init: {e}")
+        print("[DB] Server will start but DB operations may fail until connection is restored.")
+        return
     cursor = conn.cursor()
     
     # 1. Users Table (Key-Value)
@@ -352,6 +371,46 @@ def get_all_items(table: str) -> Dict[str, Any]:
             json_data = json.loads(json_data)
         result[row[pk_col]] = json_data
     return result
+
+
+def delete_item(table: str, key: str) -> bool:
+    """
+    Delete an item from a table
+    Returns True if deleted, False if not found
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    pk_map = {
+        "loans": "loan_id",
+        "users": "phone",
+        "kyc": "user_id",
+        "otps": "phone",
+        "credit_scores": "user_id",
+        "sessions": "token"
+    }
+    
+    if table not in pk_map:
+        release_connection(conn)
+        return False
+    
+    pk_col = pk_map[table]
+    
+    # Check if exists first
+    cursor.execute(f"SELECT 1 FROM {table} WHERE {pk_col} = %s", (key,))
+    exists = cursor.fetchone()
+    
+    if not exists:
+        release_connection(conn)
+        return False
+    
+    # Delete the item
+    cursor.execute(f"DELETE FROM {table} WHERE {pk_col} = %s", (key,))
+    conn.commit()
+    release_connection(conn)
+    
+    return True
+
 
 def get_repayments(loan_id: str) -> List[Dict[str, Any]]:
     """Specific helper for fetching list of repayments"""
