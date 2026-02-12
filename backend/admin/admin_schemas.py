@@ -90,6 +90,9 @@ class KycRecordOut(BaseModel):
     selfie_url: Optional[str] = None
     blockchain_tx_hash: Optional[str] = None
     blockchain_kyc_hash: Optional[str] = None
+    is_pep: Optional[bool] = False
+    is_sanctioned: Optional[bool] = False
+    aml_risk_level: Optional[str] = None
     created_at: datetime
 
 

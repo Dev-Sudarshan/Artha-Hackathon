@@ -6,6 +6,7 @@ Updates loan record with AI suggestion but leaves final decision to admin.
 """
 
 import os
+import time as _time
 import threading
 from typing import Optional
 from urllib.parse import urlparse
@@ -45,6 +46,7 @@ def verify_loan_video_background(loan_id: str):
     Updates loan record with verification result and AI suggestion
     """
     print(f"\n[BG VERIFICATION] Starting video verification for loan {loan_id}")
+    _t0 = _time.time()
     
     try:
         # Get loan data
@@ -99,16 +101,17 @@ def verify_loan_video_background(loan_id: str):
         os.makedirs(uploads_dir, exist_ok=True)
         
         # Create unique filename for extracted frame
-        import time
-        frame_filename = f"video_frame_{loan_id}_{int(time.time())}.jpg"
+        frame_filename = f"video_frame_{loan_id}_{int(_time.time())}.jpg"
         frame_save_path = os.path.join(uploads_dir, frame_filename)
         
         # Run video verification
+        _t_verify = _time.time()
         verification_result = verify_video_identity(
             video_path=video_path,
             reference_photo_path=selfie_path,
             save_frame_to=frame_save_path
         )
+        print(f"[TIMING] verify_video_identity: {_time.time()-_t_verify:.2f}s")
         
         print(f"[BG VERIFICATION] Result: {verification_result}")
         
@@ -135,6 +138,7 @@ def verify_loan_video_background(loan_id: str):
         
         print(f"[BG VERIFICATION] ✓ Completed for loan {loan_id}")
         print(f"[BG VERIFICATION] AI Suggestion: {ai_suggestion} - {ai_reason}")
+        print(f"[TIMING] *** Total loan BG verification: {_time.time()-_t0:.2f}s ***")
         
     except Exception as e:
         print(f"[BG VERIFICATION] ERROR for loan {loan_id}: {e}")

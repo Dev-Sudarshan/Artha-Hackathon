@@ -80,6 +80,7 @@ const KYC = () => {
     const aiStatus = record.ai_suggested_status?.toUpperCase();
     if (aiStatus === 'APPROVED') return { text: 'AI Verified', class: 'verified' };
     if (aiStatus === 'REJECTED') return { text: 'AI Not Verified', class: 'not-verified' };
+    if (aiStatus === 'NEEDS_REVIEW') return { text: 'Needs Review', class: 'not-verified' };
     return { text: 'AI Processing', class: 'processing' };
   };
 
@@ -246,7 +247,11 @@ const KYC = () => {
                     onClick={() => loadDetails(r.user_phone)}
                     className={`kyc-item-compact ${active ? 'active' : ''}`}
                   >
-                    <div className="kyc-item-name">{r.full_name || r.user_phone}</div>
+                    <div className="kyc-item-name">
+                      {r.full_name || r.user_phone}
+                      {r.is_pep && <span style={{marginLeft: 6, fontSize: 10, background: '#F59E0B', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700}}>PEP</span>}
+                      {r.is_sanctioned && <span style={{marginLeft: 6, fontSize: 10, background: '#DC2626', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700}}>SANCTIONED</span>}
+                    </div>
                     <span className={`ai-verification-badge ${aiStatus.class}`}>{aiStatus.text}</span>
                   </button>
                 );
@@ -363,6 +368,91 @@ const KYC = () => {
                         </div>
                       )}
                     </>
+                  )}
+                </div>
+              </div>
+
+              {/* PEP / Sanctions / CFT Screening Results */}
+              <div className="detail-section">
+                <h3 className="section-title">AML / PEP / CFT Screening</h3>
+                <div className="verification-grid">
+                  {selectedDetails.kyc?.final_result?.pep_screened ? (
+                    <>
+                      <div className="verification-item">
+                        <span className="verification-label">Screening Status:</span>
+                        <span className="verification-badge match">✓ Screened</span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Risk Level:</span>
+                        <span className={`kyc-badge ${
+                          selectedDetails.kyc.final_result.aml_risk_level === 'CRITICAL' ? 'rejected' :
+                          selectedDetails.kyc.final_result.aml_risk_level === 'HIGH' ? 'rejected' :
+                          selectedDetails.kyc.final_result.aml_risk_level === 'MEDIUM' ? 'pending' : 'approved'
+                        }`}>
+                          {selectedDetails.kyc.final_result.aml_risk_level || 'LOW'}
+                        </span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Politically Exposed Person (PEP):</span>
+                        <span className={`verification-badge ${selectedDetails.kyc.final_result.is_pep ? 'no-match' : 'match'}`}>
+                          {selectedDetails.kyc.final_result.is_pep ? '⚠ YES — PEP Identified' : '✓ Not a PEP'}
+                        </span>
+                      </div>
+                      <div className="verification-item">
+                        <span className="verification-label">Sanctions / CFT:</span>
+                        <span className={`verification-badge ${selectedDetails.kyc.final_result.is_sanctioned ? 'no-match' : 'match'}`}>
+                          {selectedDetails.kyc.final_result.is_sanctioned ? '🚫 SANCTIONED — Found on watchlist' : '✓ Clear'}
+                        </span>
+                      </div>
+                      {selectedDetails.kyc.final_result.pep_matches?.length > 0 && (
+                        <div className="verification-item full-width">
+                          <span className="verification-label">PEP Match Details:</span>
+                          <div style={{ marginTop: 4 }}>
+                            {selectedDetails.kyc.final_result.pep_matches.map((m, i) => (
+                              <div key={i} style={{ 
+                                background: '#FFF7ED', border: '1px solid #F59E0B', borderRadius: 6, 
+                                padding: '8px 12px', marginBottom: 6, fontSize: 13 
+                              }}>
+                                <strong>{m.name}</strong> (Score: {(m.score * 100).toFixed(1)}%)
+                                {m.position?.length > 0 && <div style={{color: '#92400E'}}>Position: {m.position.join(', ')}</div>}
+                                {m.country?.length > 0 && <div style={{color: '#92400E'}}>Country: {m.country.join(', ')}</div>}
+                                <div style={{color: '#999', fontSize: 11}}>Topics: {m.topics?.join(', ')}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {selectedDetails.kyc.final_result.sanctions_matches?.length > 0 && (
+                        <div className="verification-item full-width">
+                          <span className="verification-label">Sanctions/CFT Match Details:</span>
+                          <div style={{ marginTop: 4 }}>
+                            {selectedDetails.kyc.final_result.sanctions_matches.map((m, i) => (
+                              <div key={i} style={{ 
+                                background: '#FEF2F2', border: '1px solid #DC2626', borderRadius: 6, 
+                                padding: '8px 12px', marginBottom: 6, fontSize: 13 
+                              }}>
+                                <strong>{m.name}</strong> (Score: {(m.score * 100).toFixed(1)}%)
+                                {m.datasets?.length > 0 && <div style={{color: '#991B1B'}}>Lists: {m.datasets.join(', ')}</div>}
+                                {m.country?.length > 0 && <div style={{color: '#991B1B'}}>Country: {m.country.join(', ')}</div>}
+                                <div style={{color: '#999', fontSize: 11}}>Topics: {m.topics?.join(', ')}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {selectedDetails.kyc.final_result.screening_error && (
+                        <div className="verification-item full-width">
+                          <span className="verification-label">Screening Error:</span>
+                          <span className="verification-value" style={{color: '#DC2626'}}>{selectedDetails.kyc.final_result.screening_error}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="verification-item full-width">
+                      <span className="verification-value" style={{color: '#6B7280'}}>
+                        Screening not yet performed — will run automatically during KYC verification
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>

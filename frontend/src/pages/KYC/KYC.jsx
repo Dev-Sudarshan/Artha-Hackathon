@@ -13,6 +13,7 @@ const KYC = () => {
     const [loading, setLoading] = useState(false);
 
     const [formData, setFormData] = useState({
+        dob: '',
         gender: '',
         fatherName: '',
         profession: '',
@@ -85,24 +86,39 @@ const KYC = () => {
             // user object has: firstName, lastName, phone, dob (from login/register)
             // formData has: gender, fatherName, profession, permAddress...
 
+            // Use DOB from form (user may have entered it) or fall back to user profile
+            const dob = formData.dob || user.dob || '';
+            if (!dob) {
+                alert('Date of Birth is required. Please fill it in.');
+                setLoading(false);
+                return;
+            }
+
+            // When "Same as Permanent" is checked, always use current permAddress
+            const tempAddr = formData.sameAddress ? formData.permAddress : formData.tempAddress;
+
             const payload = {
                 basic_info: {
-                    first_name: user.firstName,
-                    middle_name: user.middleName || "",
-                    last_name: user.lastName,
-                    date_of_birth: user.dob,
-                    phone: user.phone,
+                    first_name: user.firstName || '',
+                    middle_name: user.middleName || '',
+                    last_name: user.lastName || '',
+                    date_of_birth: dob,
+                    phone: user.phone || '',
                     gender: formData.gender,
                     profession: formData.profession,
                     father_name: formData.fatherName,
                 },
                 permanent_address: {
-                    ...formData.permAddress,
-                    ward: parseInt(formData.permAddress.ward)
+                    province: formData.permAddress.province || '',
+                    district: formData.permAddress.district || '',
+                    municipality: formData.permAddress.municipality || '',
+                    ward: parseInt(formData.permAddress.ward) || 0
                 },
                 temporary_address: {
-                    ...formData.tempAddress,
-                    ward: parseInt(formData.tempAddress.ward)
+                    province: tempAddr.province || '',
+                    district: tempAddr.district || '',
+                    municipality: tempAddr.municipality || '',
+                    ward: parseInt(tempAddr.ward) || 0
                 }
             };
 

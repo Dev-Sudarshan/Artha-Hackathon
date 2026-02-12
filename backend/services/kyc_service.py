@@ -176,6 +176,8 @@ def _run_verification_background(user_id: str):
     Runs ALL AI verification in a background thread so the HTTP response is instant.
     """
     try:
+        import time as _time
+        _t_total = _time.time()
         print(f"[KYC BG] Starting background verification for {user_id}")
         kyc_data = get_item("kyc", user_id)
         if not kyc_data:
@@ -198,6 +200,7 @@ def _run_verification_background(user_id: str):
         # ============================================================
         # STEP 1: OCR VERIFICATION (citizenship card)
         # ============================================================
+        _t1 = _time.time()
         print("[KYC BG] === STEP 1: Running OCR verification ===")
 
         full_name = " ".join(
@@ -256,9 +259,61 @@ def _run_verification_background(user_id: str):
             print(f"[KYC BG] OCR verification failed (non-blocking): {ai_err}")
             ai_results["ocr_error"] = str(ai_err)
 
+        print(f"[KYC BG] STEP 1 (OCR) took {_time.time() - _t1:.1f}s")
+
+        # ============================================================
+        # STEP 1.5: PEP / SANCTIONS / CFT SCREENING (OpenSanctions)
+        # ============================================================
+        _t15 = _time.time()
+        print("[KYC BG] === STEP 1.5: Running PEP / Sanctions / CFT screening ===")
+
+        # Prefer the OCR-extracted name (official document name) over user-entered name
+        ocr_extracted = kyc_data.get("id_documents", {}).get("ocr_extracted", {})
+        screening_name = ocr_extracted.get("full_name") or full_name
+        screening_id = ocr_extracted.get("citizenship_certificate_number") or citizenship_no
+        screening_dob = ocr_extracted.get("date_of_birth") or dob
+
+        print(f"[KYC BG] Screening with: name='{screening_name}', id='{screening_id}', dob='{screening_dob}'")
+        print(f"[KYC BG]   (source: {'OCR extracted' if ocr_extracted.get('full_name') else 'user entered'})")
+
+        sanctions_result = {
+            "screened": False,
+            "is_pep": False,
+            "is_sanctioned": False,
+            "risk_level": "LOW",
+            "pep_matches": [],
+            "sanctions_matches": [],
+            "error": None,
+        }
+
+        try:
+            from services.sanctions_screening_service import screen_individual
+
+            sanctions_result = screen_individual(
+                full_name=screening_name,
+                id_number=screening_id,
+                date_of_birth=screening_dob,
+                nationality="Nepal",
+            )
+            print(f"[KYC BG] Sanctions screening result: PEP={sanctions_result['is_pep']}, "
+                  f"Sanctioned={sanctions_result['is_sanctioned']}, "
+                  f"Risk={sanctions_result['risk_level']}, "
+                  f"Matches={sanctions_result['total_matches']}")
+
+            # Save screening result to DB immediately
+            kyc_data["sanctions_screening"] = sanctions_result
+            put_item("kyc", user_id, kyc_data)
+
+        except Exception as sanctions_err:
+            print(f"[KYC BG] Sanctions screening failed (non-blocking): {sanctions_err}")
+            sanctions_result["error"] = str(sanctions_err)
+
+        print(f"[KYC BG] STEP 1.5 (PEP/CFT) took {_time.time() - _t15:.1f}s")
+
         # ============================================================
         # STEP 2: FACE MATCHING (selfie vs ID card)
         # ============================================================
+        _t2 = _time.time()
         print("[KYC BG] === STEP 2: Running face matching ===")
 
         try:
@@ -282,9 +337,12 @@ def _run_verification_background(user_id: str):
                 "reason": f"Face AI error: {str(face_err)}"
             }
 
+        print(f"[KYC BG] STEP 2 (Face) took {_time.time() - _t2:.1f}s")
+
         # ============================================================
         # STEP 3: LIVENESS CHECK
         # ============================================================
+        _t3 = _time.time()
         print("[KYC BG] === STEP 3: Running liveness detection ===")
 
         try:
@@ -300,6 +358,8 @@ def _run_verification_background(user_id: str):
                 "reason": f"Liveness error: {str(live_err)}",
             }
 
+        print(f"[KYC BG] STEP 3 (Liveness) took {_time.time() - _t3:.1f}s")
+
         # ============================================================
         # FINAL: MERGE ALL RESULTS
         # ============================================================
@@ -308,7 +368,18 @@ def _run_verification_background(user_id: str):
         face_ok = bool(face_result.get("face_match"))
         live_ok = bool(liveness_result.get("liveness_passed"))
 
-        ai_suggested_status = "APPROVED" if (ocr_ok and face_ok and live_ok) else "REJECTED"
+        # PEP/Sanctions flags
+        is_pep = sanctions_result.get("is_pep", False)
+        is_sanctioned = sanctions_result.get("is_sanctioned", False)
+        aml_risk_level = sanctions_result.get("risk_level", "LOW")
+
+        # If sanctioned → auto-reject; if PEP → flag for admin review
+        if is_sanctioned:
+            ai_suggested_status = "REJECTED"
+        elif is_pep:
+            ai_suggested_status = "NEEDS_REVIEW"
+        else:
+            ai_suggested_status = "APPROVED" if (ocr_ok and face_ok and live_ok) else "REJECTED"
 
         reasons = []
         if not ocr_ok:
@@ -317,6 +388,10 @@ def _run_verification_background(user_id: str):
             reasons.append("Face mismatch")
         if not live_ok:
             reasons.append("Liveness failed")
+        if is_sanctioned:
+            reasons.append("SANCTIONED/CFT: Person found on international sanctions or terrorism financing list")
+        if is_pep:
+            reasons.append("PEP: Person identified as Politically Exposed Person — requires enhanced due diligence")
 
         final_kyc_result = {
             **ai_results,
@@ -326,10 +401,19 @@ def _run_verification_background(user_id: str):
             "liveness_passed": liveness_result.get("liveness_passed"),
             "liveness_reason": liveness_result.get("reason"),
             "ai_suggested_status": ai_suggested_status,
-            "reason": "; ".join(reasons) if reasons else face_result.get("reason")
+            "reason": "; ".join(reasons) if reasons else face_result.get("reason"),
+            # PEP / AML / CFT screening results
+            "pep_screened": sanctions_result.get("screened", False),
+            "is_pep": is_pep,
+            "is_sanctioned": is_sanctioned,
+            "aml_risk_level": aml_risk_level,
+            "pep_matches": sanctions_result.get("pep_matches", []),
+            "sanctions_matches": sanctions_result.get("sanctions_matches", []),
+            "screening_error": sanctions_result.get("error"),
         }
 
-        print(f"[KYC BG] Final result: OCR={ocr_ok}, Face={face_ok}, Liveness={live_ok}")
+        print(f"[KYC BG] Final result: OCR={ocr_ok}, Face={face_ok}, Liveness={live_ok}, PEP={is_pep}, Sanctioned={is_sanctioned}")
+        print(f"[KYC BG] AML Risk Level: {aml_risk_level}")
         print(f"[KYC BG] AI suggested status: {ai_suggested_status}")
 
         # ---- BLOCKCHAIN WRITE ----
@@ -355,6 +439,7 @@ def _run_verification_background(user_id: str):
         put_item("kyc", user_id, kyc_data)
 
         print(f"[KYC BG] Background verification COMPLETE for {user_id}")
+        print(f"[KYC BG] TOTAL TIME: {_time.time() - _t_total:.1f}s")
 
     except Exception as e:
         print(f"[KYC BG] CRITICAL ERROR in background verification for {user_id}: {e}")

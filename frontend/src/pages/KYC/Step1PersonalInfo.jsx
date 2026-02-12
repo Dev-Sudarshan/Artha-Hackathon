@@ -1,6 +1,14 @@
+import { useState, useEffect } from 'react';
 import '../../styles/Auth.css'; // Reuse form styles
 
 const Step1PersonalInfo = ({ data, updateData, nextStep, user, loading }) => {
+    // Pre-fill DOB from user profile if available and form is empty
+    useEffect(() => {
+        if (user?.dob && !data.dob) {
+            updateData('dob', user.dob);
+        }
+    }, []); // Run once on mount
+
     const handleChange = (e) => {
         updateData(e.target.name, e.target.value);
     };
@@ -64,6 +72,13 @@ const Step1PersonalInfo = ({ data, updateData, nextStep, user, loading }) => {
                             <option value="other">Other</option>
                         </select>
                     </div>
+                </div>
+            </div>
+
+            <div className="form-group">
+                <label>Date of Birth</label>
+                <div className="input-wrapper no-icon">
+                    <input type="date" name="dob" value={data.dob || ''} onChange={handleChange} required />
                 </div>
             </div>
 

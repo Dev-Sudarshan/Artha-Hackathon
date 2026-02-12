@@ -245,9 +245,15 @@ def transform_to_kyc(user_id: str, kyc_data: dict, index: int, all_loans: dict =
     selfie_url = decl_video.get("selfie_image_ref")
 
     ai_suggested = None
+    is_pep = False
+    is_sanctioned = False
+    aml_risk_level = None
     final_result = kyc_data.get("final_result") or {}
     if isinstance(final_result, dict):
         ai_suggested = final_result.get("ai_suggested_status")
+        is_pep = bool(final_result.get("is_pep", False))
+        is_sanctioned = bool(final_result.get("is_sanctioned", False))
+        aml_risk_level = final_result.get("aml_risk_level")
 
     return schemas.KycRecordOut(
         id=index,
@@ -263,6 +269,9 @@ def transform_to_kyc(user_id: str, kyc_data: dict, index: int, all_loans: dict =
         selfie_url=selfie_url,
         blockchain_tx_hash=kyc_data.get("blockchain_tx_hash"),
         blockchain_kyc_hash=kyc_data.get("blockchain_kyc_hash"),
+        is_pep=is_pep,
+        is_sanctioned=is_sanctioned,
+        aml_risk_level=aml_risk_level,
         created_at=_parse_datetime(kyc_data.get("created_at")) or datetime.now(),
     )
 
