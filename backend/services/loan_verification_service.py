@@ -15,6 +15,21 @@ from db.database import get_item, put_item
 from models.video_verification import verify_video_identity
 
 
+def _safe_put_loan(loan_id: str, loan: dict) -> bool:
+    """
+    Only update the loan if it still exists in the DB.
+    Prevents the background thread from resurrecting a deleted loan
+    via the upsert in put_item.
+    Returns True if updated, False if loan was deleted.
+    """
+    existing = get_item("loans", loan_id)
+    if existing is None:
+        print(f"[BG VERIFICATION] Loan {loan_id} was deleted — skipping update")
+        return False
+    put_item("loans", loan_id, loan)
+    return True
+
+
 def _resolve_upload_ref(ref: str) -> str:
     """Resolve frontend-provided refs to local disk paths."""
     if not ref:
@@ -62,14 +77,16 @@ def verify_loan_video_background(loan_id: str):
             print(f"[BG VERIFICATION] No video reference for loan {loan_id}")
             loan["ai_suggestion"] = "MANUAL_REVIEW"
             loan["ai_suggestion_reason"] = "No video uploaded"
-            put_item("loans", loan_id, loan)
+            loan["status"] = "PENDING_ADMIN_APPROVAL"
+            _safe_put_loan(loan_id, loan)
             return
         
         if not selfie_ref:
             print(f"[BG VERIFICATION] No KYC selfie reference for loan {loan_id}")
             loan["ai_suggestion"] = "MANUAL_REVIEW"
             loan["ai_suggestion_reason"] = "No KYC selfie found"
-            put_item("loans", loan_id, loan)
+            loan["status"] = "PENDING_ADMIN_APPROVAL"
+            _safe_put_loan(loan_id, loan)
             return
         
         # Resolve file paths
@@ -84,14 +101,16 @@ def verify_loan_video_background(loan_id: str):
             print(f"[BG VERIFICATION] Video file not found: {video_path}")
             loan["ai_suggestion"] = "MANUAL_REVIEW"
             loan["ai_suggestion_reason"] = "Video file not found"
-            put_item("loans", loan_id, loan)
+            loan["status"] = "PENDING_ADMIN_APPROVAL"
+            _safe_put_loan(loan_id, loan)
             return
         
         if not os.path.exists(selfie_path):
             print(f"[BG VERIFICATION] Selfie file not found: {selfie_path}")
             loan["ai_suggestion"] = "MANUAL_REVIEW"
             loan["ai_suggestion_reason"] = "Selfie file not found"
-            put_item("loans", loan_id, loan)
+            loan["status"] = "PENDING_ADMIN_APPROVAL"
+            _safe_put_loan(loan_id, loan)
             return
         
         # Prepare path to save extracted video frame
@@ -134,7 +153,8 @@ def verify_loan_video_background(loan_id: str):
         loan["ai_suggestion_reason"] = ai_reason
         loan["status"] = "PENDING_ADMIN_APPROVAL"  # Now ready for admin review
         
-        put_item("loans", loan_id, loan)
+        if not _safe_put_loan(loan_id, loan):
+            return  # Loan was deleted while we were verifying
         
         print(f"[BG VERIFICATION] ✓ Completed for loan {loan_id}")
         print(f"[BG VERIFICATION] AI Suggestion: {ai_suggestion} - {ai_reason}")
@@ -156,7 +176,7 @@ def verify_loan_video_background(loan_id: str):
                 loan["ai_suggestion"] = "MANUAL_REVIEW"
                 loan["ai_suggestion_reason"] = f"Verification error: {str(e)}"
                 loan["status"] = "PENDING_ADMIN_APPROVAL"
-                put_item("loans", loan_id, loan)
+                _safe_put_loan(loan_id, loan)
         except Exception as update_err:
             print(f"[BG VERIFICATION] Failed to update error status: {update_err}")
 

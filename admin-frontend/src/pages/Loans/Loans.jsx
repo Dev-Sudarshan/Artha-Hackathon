@@ -13,6 +13,11 @@ const Loans = () => {
 
   useEffect(() => {
     loadLoans();
+    // Auto-refresh every 15 seconds to pick up user deletions and status changes
+    const interval = setInterval(() => {
+      if (!document.hidden) loadLoans();
+    }, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadLoans = async () => {
@@ -307,7 +312,7 @@ const Loans = () => {
               </div>
 
               <div className="loan-actions">
-                {isPending ? (
+                {(isPending || isVerifying) ? (
                   <>
                     <button className="btn btn-primary" disabled={actionLoading} onClick={() => handleApprove(l.loan_id)}>
                       {actionLoading ? 'Working…' : 'Approve'}
@@ -315,20 +320,12 @@ const Loans = () => {
                     <button className="btn btn-secondary" disabled={actionLoading} onClick={() => handleReject(l.loan_id)}>
                       {actionLoading ? 'Working…' : 'Reject'}
                     </button>
+                    {isVerifying && (
+                      <div style={{ fontSize: '11px', color: '#3B82F6', marginTop: '6px', textAlign: 'center' }}>
+                        🔄 AI still verifying — you can approve manually
+                      </div>
+                    )}
                   </>
-                ) : isVerifying ? (
-                  <div style={{ 
-                    padding: '12px 20px',
-                    fontSize: '13px', 
-                    color: '#3B82F6', 
-                    fontWeight: '600',
-                    textAlign: 'center',
-                    background: '#F0F9FF',
-                    borderRadius: '10px',
-                    border: '2px solid #3B82F6'
-                  }}>
-                    🔄 AI Verification in Progress...
-                  </div>
                 ) : statusText.toUpperCase() === 'LISTED' ? (
                   <div style={{ 
                     padding: '12px 20px',

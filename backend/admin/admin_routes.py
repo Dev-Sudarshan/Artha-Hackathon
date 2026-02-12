@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from admin import admin_models as models, admin_schemas as schemas
 from admin.admin_auth import create_access_token, require_roles, verify_password
-from db.database import get_db, get_all_items, get_item, put_item
+from db.database import get_db, get_all_items, get_all_items_batch, get_item, put_item
 from blockchain.loan_status import record_loan_status
 
 router = APIRouter()
@@ -292,8 +292,10 @@ def get_dashboard(
     """
     Dashboard with real-time KPIs from Artha JSONB database
     """
-    all_loans = get_all_items("loans")
-    all_kyc = get_all_items("kyc")
+    batch = get_all_items_batch("loans", "kyc", "credit_scores")
+    all_loans = batch["loans"]
+    all_kyc = batch["kyc"]
+    all_scores = batch["credit_scores"]
     
     # Calculate KPIs
     active_loans = sum(1 for loan in all_loans.values() if loan.get("status") == "ACTIVE")
@@ -318,7 +320,7 @@ def get_dashboard(
     
     # Count flagged accounts (borrowers with low credit score)
     borrower_phones = {loan.get("user_id") for loan in all_loans.values() if loan.get("user_id")}
-    flagged_accounts = sum(1 for phone in borrower_phones if (get_item("credit_scores", phone) or 600) < 550)
+    flagged_accounts = sum(1 for phone in borrower_phones if (all_scores.get(phone) or 600) < 550)
     
     kpis = schemas.DashboardKpiOut(
         active_loans=active_loans,
@@ -333,7 +335,7 @@ def get_dashboard(
     for loan_id, loan in list(all_loans.items())[:5]:  # Top 5 for watchlist
         if loan.get("status") == "ACTIVE":
             borrower_id = loan.get("user_id", "unknown")
-            credit_score = get_item("credit_scores", borrower_id) or 600
+            credit_score = all_scores.get(borrower_id) or 600
             if credit_score < 650:
                 watchlist.append(schemas.WatchlistItemOut(
                     label=f"Loan {loan_id[:8]}...",
@@ -390,10 +392,11 @@ def list_borrowers(
     """
     List all borrowers from Artha JSONB database
     """
-    all_users = get_all_items("users")
-    all_loans = get_all_items("loans")
-    all_kyc = get_all_items("kyc")
-    all_scores = get_all_items("credit_scores")
+    batch = get_all_items_batch("users", "loans", "kyc", "credit_scores")
+    all_users = batch["users"]
+    all_loans = batch["loans"]
+    all_kyc = batch["kyc"]
+    all_scores = batch["credit_scores"]
     
     # Find all users who have borrowed
     borrower_phones = set()
@@ -446,9 +449,10 @@ def list_lenders(
     """
     List all lenders from Artha JSONB database
     """
-    all_users = get_all_items("users")
-    all_loans = get_all_items("loans")
-    all_kyc = get_all_items("kyc")
+    batch = get_all_items_batch("users", "loans", "kyc")
+    all_users = batch["users"]
+    all_loans = batch["loans"]
+    all_kyc = batch["kyc"]
     
     # Find all users who have lent
     lender_phones = set()
@@ -537,8 +541,9 @@ def approve_loan(
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
 
-    if loan.get("status") != "PENDING_ADMIN_APPROVAL":
-        raise HTTPException(status_code=400, detail=f"Loan is not pending admin approval (status={loan.get('status')})")
+    approvable = ["PENDING_ADMIN_APPROVAL", "PENDING_VERIFICATION"]
+    if loan.get("status") not in approvable:
+        raise HTTPException(status_code=400, detail=f"Loan is not pending approval (status={loan.get('status')})")
 
     loan["status"] = "LISTED"
     loan["admin_review"] = {
@@ -589,14 +594,14 @@ def approve_loan(
     # --- Record status change on blockchain ---
     try:
         record_loan_status(
-            loan_id=loan_id,
-            status="LISTED",
-            tx_hash=loan.get("blockchain_tx_hash"), 
-            extra_metadata={
+            {
+                "status": "LISTED",
                 "action": "ADMIN_APPROVAL",
                 "reviewed_by": admin.email,
-                "reason": payload.reason
-            }
+                "reason": payload.reason,
+                "tx_hash": loan.get("blockchain_tx_hash"),
+            },
+            loan_id,
         )
         print(f"Loan {loan_id} ADMIN_APPROVAL recorded on blockchain.")
     except Exception as e:
@@ -622,8 +627,9 @@ def reject_loan(
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
 
-    if loan.get("status") != "PENDING_ADMIN_APPROVAL":
-        raise HTTPException(status_code=400, detail=f"Loan is not pending admin approval (status={loan.get('status')})")
+    rejectable = ["PENDING_ADMIN_APPROVAL", "PENDING_VERIFICATION"]
+    if loan.get("status") not in rejectable:
+        raise HTTPException(status_code=400, detail=f"Loan is not pending approval (status={loan.get('status')})")
 
     loan["status"] = "REJECTED_BY_ADMIN"
     loan["admin_review"] = {
@@ -734,14 +740,20 @@ def list_kyc(
     """
     List all KYC records from Artha JSONB database
     """
-    all_kyc = get_all_items("kyc")
-    all_loans = get_all_items("loans")
-    all_users = get_all_items("users")
+    batch = get_all_items_batch("kyc", "loans", "users")
+    all_kyc = batch["kyc"]
+    all_loans = batch["loans"]
+    all_users = batch["users"]
     
     # Transform to KycRecordOut schema
     kyc_records = []
     for idx, (user_id, kyc_data) in enumerate(all_kyc.items()):
-        record = transform_to_kyc(user_id, kyc_data, idx + 1, all_loans=all_loans, all_users=all_users)
+        try:
+            record = transform_to_kyc(user_id, kyc_data, idx + 1, all_loans=all_loans, all_users=all_users)
+        except Exception as e:
+            # If a record is in PROCESSING state or otherwise malformed, skip it gracefully
+            logger.warning("Skipping KYC record %s due to transform error: %s", user_id, e)
+            continue
         
         # Apply filters
         if status and record.status != status:
@@ -766,20 +778,38 @@ def get_kyc_details(
     if not kyc_data:
         raise HTTPException(status_code=404, detail="KYC record not found")
 
-    record = transform_to_kyc(user_phone, kyc_data, 1)
-    return schemas.KycDetailsOut(
-        user_phone=user_phone,
-        full_name=record.full_name,
-        status=record.status,
-        age=record.age,
-        location=record.location,
-        doc_front_url=record.doc_front_url,
-        doc_back_url=record.doc_back_url,
-        selfie_url=record.selfie_url,
-        blockchain_tx_hash=kyc_data.get("blockchain_tx_hash"),
-        blockchain_kyc_hash=kyc_data.get("blockchain_kyc_hash"),
-        kyc=kyc_data,
-    )
+    try:
+        # Pre-fetch data to avoid cascading fallback queries inside transform_to_kyc
+        batch = get_all_items_batch("loans", "users")
+        record = transform_to_kyc(user_phone, kyc_data, 1, all_loans=batch["loans"], all_users=batch["users"])
+        return schemas.KycDetailsOut(
+            user_phone=user_phone,
+            full_name=record.full_name,
+            status=record.status,
+            age=record.age,
+            location=record.location,
+            doc_front_url=record.doc_front_url,
+            doc_back_url=record.doc_back_url,
+            selfie_url=record.selfie_url,
+            blockchain_tx_hash=kyc_data.get("blockchain_tx_hash"),
+            blockchain_kyc_hash=kyc_data.get("blockchain_kyc_hash"),
+            kyc=kyc_data,
+        )
+    except Exception as e:
+        # If transform fails (e.g. during PROCESSING), return raw data with safe defaults
+        logger.warning("KYC detail transform error for %s: %s", user_phone, e)
+        basic_info = kyc_data.get("basic_info") or {}
+        full_name = " ".join(filter(None, [
+            str(basic_info.get("first_name") or "").strip(),
+            str(basic_info.get("middle_name") or "").strip(),
+            str(basic_info.get("last_name") or "").strip(),
+        ])).strip() or user_phone
+        return schemas.KycDetailsOut(
+            user_phone=user_phone,
+            full_name=full_name,
+            status=kyc_data.get("status", "PROCESSING"),
+            kyc=kyc_data,
+        )
 
 
 @router.post("/admin/kyc/{user_phone}/approve")
@@ -849,11 +879,11 @@ def store_kyc_on_blockchain(
         # Create a hash of the KYC data
         kyc_hash = sha256_hash(kyc_data)
         
-        # Record on blockchain
-        record_kyc_result(kyc_data, user_phone)
+        # Record on blockchain — returns real MultiChain TXID
+        txid = record_kyc_result(kyc_data, user_phone)
         
         # Update KYC record with blockchain info
-        kyc_data["blockchain_tx_hash"] = f"kyc-tx-{user_phone[:8]}"  # Simplified TX hash
+        kyc_data["blockchain_tx_hash"] = txid  # Real MultiChain transaction ID
         kyc_data["blockchain_kyc_hash"] = kyc_hash
         kyc_data["blockchain_stored_at"] = datetime.utcnow().isoformat()
         kyc_data["blockchain_stored_by"] = admin.email
